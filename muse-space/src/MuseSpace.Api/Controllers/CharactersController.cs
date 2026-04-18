@@ -54,4 +54,13 @@ public class CharactersController : ControllerBase
         if (!deleted) return NotFound(ApiResponse<bool>.Fail("Character not found"));
         return Ok(ApiResponse<bool>.Ok(true));
     }
+
+    [HttpPut("{characterId:guid}")]
+    public async Task<ActionResult<ApiResponse<CharacterResponse>>> Update(
+        Guid projectId, Guid characterId, [FromBody] UpdateCharacterRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _service.UpdateAsync(projectId, characterId, request, cancellationToken);
+        if (result is null) return NotFound(ApiResponse<CharacterResponse>.Fail("Character not found"));
+        return Ok(ApiResponse<CharacterResponse>.Ok(result));
+    }
 }

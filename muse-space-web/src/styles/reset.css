@@ -27,6 +27,31 @@ body {
     'Apple Color Emoji',
     'Segoe UI Emoji';
   line-height: inherit;
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-muted);
 }
 
 hr {

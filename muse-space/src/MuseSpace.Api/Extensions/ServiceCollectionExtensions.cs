@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
             client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ApiKey}");
             client.DefaultRequestHeaders.Add("HTTP-Referer", "http://localhost");
+            client.Timeout = TimeSpan.FromMinutes(3);
         });
 
         // Prompt（有构造参数，手动注册）

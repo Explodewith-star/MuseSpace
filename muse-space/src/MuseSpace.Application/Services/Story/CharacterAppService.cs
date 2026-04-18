@@ -40,4 +40,25 @@ public sealed class CharacterAppService
         await _repository.DeleteAsync(projectId, characterId, cancellationToken);
         return true;
     }
+
+    public async Task<CharacterResponse?> UpdateAsync(Guid projectId, Guid characterId, UpdateCharacterRequest request, CancellationToken cancellationToken = default)
+    {
+        var existing = await _repository.GetByIdAsync(projectId, characterId, cancellationToken);
+        if (existing is null) return null;
+
+        if (request.Name is not null) existing.Name = request.Name;
+        if (request.Age.HasValue) existing.Age = request.Age;
+        if (request.Role is not null) existing.Role = request.Role;
+        if (request.PersonalitySummary is not null) existing.PersonalitySummary = request.PersonalitySummary;
+        if (request.Motivation is not null) existing.Motivation = request.Motivation;
+        if (request.SpeakingStyle is not null) existing.SpeakingStyle = request.SpeakingStyle;
+        if (request.ForbiddenBehaviors is not null) existing.ForbiddenBehaviors = request.ForbiddenBehaviors;
+        if (request.PublicSecrets is not null) existing.PublicSecrets = request.PublicSecrets;
+        if (request.PrivateSecrets is not null) existing.PrivateSecrets = request.PrivateSecrets;
+        if (request.CurrentState is not null) existing.CurrentState = request.CurrentState;
+        if (request.Tags is not null) existing.Tags = request.Tags;
+
+        await _repository.SaveAsync(projectId, existing, cancellationToken);
+        return existing.Adapt<CharacterResponse>();
+    }
 }

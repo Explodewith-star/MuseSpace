@@ -8,4 +8,7 @@ public sealed class ChapterResponse
     public string? Title { get; init; }
     public string? Summary { get; init; }
     public string? Goal { get; init; }
+    public int Status { get; init; }
+    public string? DraftText { get; init; }
+    public string? FinalText { get; init; }
 }

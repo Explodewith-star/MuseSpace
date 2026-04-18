@@ -2,7 +2,6 @@ using Mapster;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Contracts.Chapters;
 using MuseSpace.Domain.Entities;
-
 namespace MuseSpace.Application.Services.Story;
 
 public sealed class ChapterAppService
@@ -39,5 +38,21 @@ public sealed class ChapterAppService
         if (existing is null) return false;
         await _repository.DeleteAsync(projectId, chapterId, cancellationToken);
         return true;
+    }
+
+    public async Task<ChapterResponse?> UpdateAsync(Guid projectId, Guid chapterId, UpdateChapterRequest request, CancellationToken cancellationToken = default)
+    {
+        var existing = await _repository.GetByIdAsync(projectId, chapterId, cancellationToken);
+        if (existing is null) return null;
+
+        if (request.Title is not null) existing.Title = request.Title;
+        if (request.Summary is not null) existing.Summary = request.Summary;
+        if (request.Goal is not null) existing.Goal = request.Goal;
+        if (request.DraftText is not null) existing.DraftText = request.DraftText;
+        if (request.FinalText is not null) existing.FinalText = request.FinalText;
+        if (request.Status.HasValue) existing.Status = (MuseSpace.Domain.Enums.ChapterStatus)request.Status.Value;
+
+        await _repository.SaveAsync(projectId, existing, cancellationToken);
+        return existing.Adapt<ChapterResponse>();
     }
 }

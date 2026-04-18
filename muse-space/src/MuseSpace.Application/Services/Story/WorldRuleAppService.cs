@@ -40,4 +40,19 @@ public sealed class WorldRuleAppService
         await _repository.DeleteAsync(projectId, ruleId, cancellationToken);
         return true;
     }
+
+    public async Task<WorldRuleResponse?> UpdateAsync(Guid projectId, Guid ruleId, UpdateWorldRuleRequest request, CancellationToken cancellationToken = default)
+    {
+        var existing = await _repository.GetByIdAsync(projectId, ruleId, cancellationToken);
+        if (existing is null) return null;
+
+        if (request.Title is not null) existing.Title = request.Title;
+        if (request.Description is not null) existing.Description = request.Description;
+        if (request.Category is not null) existing.Category = request.Category;
+        if (request.Priority.HasValue) existing.Priority = request.Priority.Value;
+        if (request.IsHardConstraint.HasValue) existing.IsHardConstraint = request.IsHardConstraint.Value;
+
+        await _repository.SaveAsync(projectId, existing, cancellationToken);
+        return existing.Adapt<WorldRuleResponse>();
+    }
 }

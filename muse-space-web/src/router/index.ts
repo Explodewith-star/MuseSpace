@@ -1,17 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import projectRoutes from './modules/projects'
 
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    name: 'Home',
-    component: () => import('@/views/HomeView.vue'),
+    redirect: '/projects',
   },
-  {
-    path: '/about',
-    name: 'About',
-    component: () => import('@/views/AboutView.vue'),
-  },
+  ...projectRoutes,
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',

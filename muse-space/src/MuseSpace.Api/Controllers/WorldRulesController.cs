@@ -47,4 +47,13 @@ public class WorldRulesController : ControllerBase
         if (!deleted) return NotFound(ApiResponse<bool>.Fail("World rule not found"));
         return Ok(ApiResponse<bool>.Ok(true));
     }
+
+    [HttpPut("{ruleId:guid}")]
+    public async Task<ActionResult<ApiResponse<WorldRuleResponse>>> Update(
+        Guid projectId, Guid ruleId, [FromBody] UpdateWorldRuleRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _service.UpdateAsync(projectId, ruleId, request, cancellationToken);
+        if (result is null) return NotFound(ApiResponse<WorldRuleResponse>.Fail("World rule not found"));
+        return Ok(ApiResponse<WorldRuleResponse>.Ok(result));
+    }
 }

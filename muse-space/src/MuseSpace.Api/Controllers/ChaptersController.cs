@@ -47,4 +47,13 @@ public class ChaptersController : ControllerBase
         if (!deleted) return NotFound(ApiResponse<bool>.Fail("Chapter not found"));
         return Ok(ApiResponse<bool>.Ok(true));
     }
+
+    [HttpPut("{chapterId:guid}")]
+    public async Task<ActionResult<ApiResponse<ChapterResponse>>> Update(
+        Guid projectId, Guid chapterId, [FromBody] UpdateChapterRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _service.UpdateAsync(projectId, chapterId, request, cancellationToken);
+        if (result is null) return NotFound(ApiResponse<ChapterResponse>.Fail("Chapter not found"));
+        return Ok(ApiResponse<ChapterResponse>.Ok(result));
+    }
 }

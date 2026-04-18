@@ -20,12 +20,21 @@ try
     builder.Services.AddOpenApi();
     builder.Services.AddMuseSpaceServices(builder.Configuration);
 
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("DevFrontend", policy =>
+            policy.WithOrigins("http://localhost:5173")
+                  .AllowAnyHeader()
+                  .AllowAnyMethod());
+    });
+
     var app = builder.Build();
 
     if (app.Environment.IsDevelopment())
     {
         app.MapOpenApi();
         app.MapScalarApiReference();
+        app.UseCors("DevFrontend");
     }
 
     app.UseSerilogRequestLogging();
