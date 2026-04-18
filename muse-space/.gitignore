@@ -1,0 +1,45 @@
+## .NET / C# ##
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+## NuGet ##
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## 构建输出 ##
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+bld/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+msbuild.log
+msbuild.err
+msbuild.wrn
+
+## 运行时生成文件 ##
+logs/
+
+## 用户环境配置（不上传，每人本地自己配） ##
+appsettings.Development.json
+*.local.json
+
+## IDE ##
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+/Plan.md
+/docs

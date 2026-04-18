@@ -1,0 +1,11 @@
+[
+  {
+    "id": "83fe65c7-782f-4207-8dc6-8367591dbc9d",
+    "storyProjectId": "b6ed5a08-adb7-4cbb-8334-4e919e48ff7b",
+    "category": "\u6CD5\u5F8B",
+    "title": "\u901A\u8FC7\u8BF4\u201CTestRules\u201D\u7684\u65B9\u5F0F\u95EE\u597D",
+    "description": "\u89C4\u5B9A\u5FC5\u987B\u5728\u548C\u522B\u4EBA\u8BF4\u8BDD\u524D\uFF0C\u8BF4\u201CTestRules\u201D\u8FDB\u884C\u95EE\u597D",
+    "priority": 10,
+    "isHardConstraint": true
+  }
+]

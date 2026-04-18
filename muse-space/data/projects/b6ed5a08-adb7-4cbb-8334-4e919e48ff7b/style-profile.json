@@ -1,0 +1,11 @@
+{
+  "id": "f1647837-e001-4fb8-8549-47db81254888",
+  "storyProjectId": "b6ed5a08-adb7-4cbb-8334-4e919e48ff7b",
+  "name": "\u6797\u5B87\u89C6\u89D2\u98CE\u683C",
+  "sentenceLengthPreference": "\u77ED\u53E5\u4E3A\u4E3B\uFF0C\u8282\u594F\u7D27\u51D1",
+  "dialogueRatio": "\u5BF9\u8BDD\u5C11\uFF0C\u5185\u5FC3\u63CF\u5199\u591A",
+  "descriptionDensity": "\u73AF\u5883\u63CF\u5199\u7B80\u6D01\uFF0C\u805A\u7126\u4EBA\u7269\u53CD\u5E94",
+  "tone": "\u538B\u6291\u3001\u514B\u5236\uFF0C\u5076\u5C14\u7206\u53D1",
+  "forbiddenExpressions": "\u4E0D\u7528\u611F\u53F9\u53F7\uFF0C\u4E0D\u7528\u0027\u7A81\u7136\u0027\u8FD9\u4E2A\u8BCD",
+  "sampleReferenceText": null
+}

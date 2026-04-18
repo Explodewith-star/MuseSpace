@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MuseSpace.Api/MuseSpace.Api.csproj" />
+    <Project Path="src/MuseSpace.Application/MuseSpace.Application.csproj" />
+    <Project Path="src/MuseSpace.Contracts/MuseSpace.Contracts.csproj" />
+    <Project Path="src/MuseSpace.Domain/MuseSpace.Domain.csproj" />
+    <Project Path="src/MuseSpace.Infrastructure/MuseSpace.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MuseSpace.UnitTests/MuseSpace.UnitTests.csproj" />
+  </Folder>
+</Solution>
