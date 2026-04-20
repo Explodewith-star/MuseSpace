@@ -41,5 +41,3 @@ appsettings.Development.json
 *.swp
 .DS_Store
 Thumbs.db
-/Plan.md
-/docs

@@ -5,7 +5,7 @@ import type { ApiResponse } from '@/types/api'
 type ExtendedConfig = AxiosRequestConfig & { silent?: boolean }
 
 const http: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_APP_BASE_API,
+  baseURL: import.meta.env.VITE_APP_BASE_API || '/api',
   timeout: 120000,
   headers: {
     'Content-Type': 'application/json',

@@ -1,0 +1,61 @@
+结合我之前对工作流的评价，以及 2026 年 AI 小说创作领域的最新最佳实践（多 Pass 编辑、Human-in-the-Loop 强干预、一致性追踪、结构化 Bible/Context 管理等），我给你一些针对性、结合规划的优化建议。这些建议尊重你当前的 Phase 分割和“第一版简单优先”原则，不会建议你大幅改变方向，而是帮你让每个 Phase 产出更有价值、更易演进。
+1. 整体规划评价与小调整建议
+优点（值得继续坚持）：
+
+分 6 个 Phase 的颗粒度非常合适，尤其是 Phase 1 只搭骨架、Phase 2 跑通最小闭环、Phase 3 补资料、Phase 4 扩展工作流、Phase 5 工程化——这完全符合“工作流优先”的理念。
+强调“面向单人开发”“不引入过重抽象（如第一版不用 MediatR）”“Prompt 文件系统优先”“输出优先 JSON”——这些决定都很明智，能让你快速迭代。
+对 SkillOrchestrator、StoryContextBuilder、Prompt 渲染的抽象边界定义清晰，后续扩展多代理或云模型路由会很自然。
+数据策略（先不重投数据库，留扩展口）也很好，避免早期被 ORM/仓储拖慢进度。
+
+小建议（不改变 Phase 划分）：
+
+在每个 Phase 的“完成标准”中，增加一条“可观测性”：例如 Phase 2 要求有清晰的 GenerationLog（包含输入/输出预览、Prompt 版本、耗时），这样即使输出质量一般，你也能快速定位是 Prompt 问题、Context 问题还是模型问题。
+在 Phase 0/1 结束时，补充一份“核心风险清单”（例如一致性漂移、Context 膨胀、输出解析失败），并在后续 Phase 逐个解决。
+Phase 5 可以考虑提前预留 “模型路由” 接口（ILlmClient 支持本地/云切换），为后面混合使用 Grok 等做好准备，而不改变当前本地优先。
+
+2. 针对每个 Phase 的具体增强建议（基于 2026 年实践）
+Phase 1（框架搭建） —— 当前你最接近的阶段
+
+已经规划得很好。额外建议：在定义 StoryContextBuilder 时，就设计成“动态注入 + 裁剪规则”的骨架（即使第一版是硬编码），例如支持“最多带最近 N 章 + 相关角色 M 人”的配置。这样 Phase 3 升级时改动最小。
+在 Skill 骨架中，ISkill 接口可以预留一个 Metadata 或 RequiredContextTypes 属性，便于 Orchestrator 未来做智能调度。
+Prompt 模板（scene-v1.md）建议从现在就采用 结构化格式（system + instruction + context slots + output_schema），并在文件名中体现版本（scene-draft-v1.0.md），为以后 A/B 测试或版本管理打基础。
+
+Phase 2（最小生成链路跑通）
+
+这是关键转折点。跑通后，立即加入一个简单的 Human-in-the-Loop 机制：API 返回结果时，同时返回“建议人工审查点”（例如高情感场景标记），即使只是日志输出。
+输出解析建议强制用 JSON Schema 验证（即使本地模型用 structured output 或 post-processing），避免后面 Phase 输出格式漂移。
+实践经验：很多作者在这个阶段会发现“一次生成太多内容”导致质量下降，建议第一版 SceneDraft 就限制单次输出长度（例如 800-1500 字），强制拆场景。
+
+Phase 3（创作资料与上下文能力补齐）
+
+这是你系统最大亮点的阶段（结构化 Memory）。
+建议在 Context Builder 中实现 “相关性过滤” 逻辑（即使简单规则也行）：生成某场景时，只注入与“冲突/情感曲线”相关的世界规则和角色信息，避免 Context 过长导致本地模型质量下降。
+增加一个轻量 StoryBible 实体（可与 StoryProject 合并），用于存放全局设定、时间线锚点等，为后期一致性检查做准备。
+
+Phase 4（创作工作流能力扩展） —— 这里可以显著提升
+
+你计划加 RevisionSkill 和 ConsistencyCheckSkill，非常正确。
+强烈建议采用 Multi-Pass 模式（2026 年最有效的实践之一）：
+Draft Pass（当前 SceneDraftSkill）
+Critique Pass（新 Skill：让模型自己找出逻辑漏洞、人物性格不符、情感曲线断裂等）
+Revise Pass（基于 Critique 结果进行针对性修改）
+这样能大幅减少幻觉和漂移，比单一生成 + 人工改强很多。
+
+ConsistencyCheckSkill 可以先做“局部检查”（当前场景 vs 最近 3 章 + 相关角色卡），后面再扩展为全书扫描。
+SkillOrchestrator 可以逐步支持简单的工作流定义（例如 YAML 或代码中配置 “Draft → Critique → Revise” 序列），为未来更复杂编排留口。
+
+Phase 5（工程化）
+
+除了数据库、Prompt 版本管理、评测，建议增加：
+合成数据 / 回归测试集：用高质量输出作为 Golden Set，定期对比新 Prompt/模型的变化。
+评估指标：不止看文本流畅度，还加“一致性得分”“情感曲线符合度”“文风匹配度”（可让另一个 Skill 打分）。
+可视化日志：简单 Web 页面或导出 Markdown 报告，展示生成历史、错误趋势。
+
+
+3. 其他跨阶段通用建议（不影响当前计划）
+
+一致性保障：这是长篇小说（5-10 万字）最头疼的问题。你的结构化 Context 已经很强，建议在 Phase 4 增加“故事状态快照”机制（每次生成后更新 Chapter Summary + Key Facts），让后续调用自动带入最新状态。
+Prompt 工程演进：第一版文件系统很好，后期可考虑引入轻量 Prompt 优化（如版本对比、A/B 测试记录），但不要过早引入 DSPy 等复杂工具（保持简单）。
+本地模型选择：Phase 2 跑通后，推荐优先测试 Qwen3 系列 或 DeepSeek-V3 在创意写作上的表现（2026 年这些模型在故事生成、人物一致性上本地表现优秀）。
+未来云模型集成：当你想提升质量时，只需在 Infrastructure 层加一个 GrokLlmClient（兼容 OpenAI 格式），然后在 AppService 中实现简单路由（例如关键场景走云，其余走本地）。这与你“本地优先”的原则完全兼容。
+Human-in-the-Loop：整个规划中可以更明确强调“AI 是协作工具，不是替代”。建议在每个 Skill 输出中增加“人工干预点建议”字段，帮助你快速介入高价值部分。
