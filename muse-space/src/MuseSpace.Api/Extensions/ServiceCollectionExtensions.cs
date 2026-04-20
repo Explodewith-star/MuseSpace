@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MuseSpace.Application.Abstractions.Llm;
 using MuseSpace.Application.Abstractions.Logging;
@@ -7,6 +8,7 @@ using MuseSpace.Application.Services;
 using MuseSpace.Application.Services.Drafting;
 using MuseSpace.Infrastructure.Llm;
 using MuseSpace.Infrastructure.Logging;
+using MuseSpace.Infrastructure.Persistence;
 using MuseSpace.Infrastructure.Prompt;
 using MuseSpace.Infrastructure.Story;
 
@@ -35,10 +37,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPromptTemplateProvider>(new FileSystemPromptTemplateProvider(promptsPath));
         services.AddSingleton<IPromptTemplateRenderer, PromptTemplateRenderer>();
 
-        // Data 路径配置（供仓储使用）
+        // Data 路径配置（供本地文件存储使用，原著原始文件等）
         var dataPath = Path.GetFullPath(
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data"));
         services.Configure<DataOptions>(opt => opt.BasePath = dataPath);
+
+        // ── PostgreSQL / EF Core ──────────────────────────────────────────────
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException(
+                "未配置数据库连接字符串。请在 appsettings.Development.json 中设置 ConnectionStrings:DefaultConnection。");
+        services.AddDbContext<MuseSpaceDbContext>(options =>
+            options.UseNpgsql(connectionString, o => o.UseVector()));
 
         // 生成日志（有构造参数，手动注册）
         var logDir = Path.Combine(AppContext.BaseDirectory, "logs", "generations");
@@ -64,12 +73,12 @@ public static class ServiceCollectionExtensions
                 .WithScopedLifetime());
 
         // Scrutor：扫描 Infrastructure 程序集
-        // - Json*Repository 类 → 按接口注册
+        // - Ef*Repository → 按接口注册（替换原有 JSON 仓储）
         // - StoryContextBuilder → 按接口注册
         services.Scan(scan => scan
             .FromAssemblyOf<StoryContextBuilder>()
             .AddClasses(c => c.Where(t =>
-                t.Name.StartsWith("Json") && t.Name.EndsWith("Repository")))
+                t.Name.StartsWith("Ef") && t.Name.EndsWith("Repository")))
                 .AsImplementedInterfaces()
                 .WithScopedLifetime()
             .AddClasses(c => c.Where(t => t.Name == nameof(StoryContextBuilder)))
