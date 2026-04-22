@@ -1,8 +1,8 @@
 services:
   api:
-    # 生产环境：镜像由 GitHub Actions 构建后推送到 Docker Hub
-    # 格式：你的DockerHub用户名/musespace-api:latest
-    image: ${DOCKERHUB_USERNAME}/musespace-api:latest
+    # 生产环境：镜像由 GitHub Actions 构建后推送到 ghcr.io
+    # 格式：ghcr.io/你的GitHub用户名(小写)/musespace-api:latest
+    image: ghcr.io/${GITHUB_USERNAME}/musespace-api:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -22,12 +22,12 @@ services:
       - Embedding__ApiKey=${EMBEDDING_API_KEY}
     volumes:
       - ./logs:/app/logs
-      - musespace-data:/data   # 原著文件等用户数据持久化
+      - musespace-data:/data # 原著文件等用户数据持久化
     networks:
       - musespace-net
 
   web:
-    image: ${DOCKERHUB_USERNAME}/musespace-web:latest
+    image: ghcr.io/${GITHUB_USERNAME}/musespace-web:latest
     build:
       context: ../muse-space-web
       dockerfile: Dockerfile
@@ -45,4 +45,4 @@ networks:
     driver: bridge
 
 volumes:
-  musespace-data:   # 命名卷，由 Docker 管理，容器重建后数据不丢失
+  musespace-data: # 命名卷，由 Docker 管理，容器重建后数据不丢失
