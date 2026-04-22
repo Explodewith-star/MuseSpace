@@ -28,7 +28,7 @@ jobs:
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
-          context: ./muse-space        # Dockerfile 里 COPY 的路径基准
+          context: ./muse-space # Dockerfile 里 COPY 的路径基准
           file: ./muse-space/Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/musespace-api:latest
