@@ -28,8 +28,8 @@ jobs:
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
-          context: ./muse-space # Dockerfile 里 COPY 的路径基准
-          file: ./muse-space/Dockerfile
+          context: ./muse-space        # MuseSpace.slnx 和 src/ 都在这里
+          file: ./muse-space/muse-space/Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/musespace-api:latest
           cache-from: type=gha
