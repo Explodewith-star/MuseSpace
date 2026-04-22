@@ -22,7 +22,6 @@ const {
   startEdit,
   cancelEdit,
   saveEdit,
-  statusLabel,
 } = initChapterDetailState()
 
 function goBack() {

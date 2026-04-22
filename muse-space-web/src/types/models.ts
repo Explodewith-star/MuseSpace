@@ -126,6 +126,7 @@ export interface StyleProfileResponse {
   dialogueRatio?: string
   descriptionDensity?: string
   forbiddenExpressions?: string
+  sampleReferenceText?: string
 }
 
 export interface UpsertStyleProfileRequest {

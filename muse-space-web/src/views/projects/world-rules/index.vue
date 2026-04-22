@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import AppButton from '@/components/base/AppButton.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'

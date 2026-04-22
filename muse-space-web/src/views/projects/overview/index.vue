@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import AppCard from '@/components/base/AppCard.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import { useProjectStore } from '@/store/modules/project'
 
 const route = useRoute()
-const router = useRouter()
 const projectStore = useProjectStore()
 const projectId = route.params.id as string
 
