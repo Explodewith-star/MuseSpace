@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write  # 推送到 ghcr.io 需要此权限
+      packages: write # 推送到 ghcr.io 需要此权限
 
     steps:
       - name: Checkout code
@@ -26,6 +26,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # ghcr.io 镜像名必须全小写，github.repository_owner 可能含大写
+      - name: Set lowercase owner
+        run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       # ── 构建并推送后端镜像 ──────────────────────────────────────────
       - name: Build and push API image
         uses: docker/build-push-action@v6
@@ -33,7 +37,7 @@ jobs:
           context: ./muse-space # MuseSpace.slnx 和 src/ 都在这里
           file: ./muse-space/muse-space/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/musespace-api:latest
+          tags: ghcr.io/${{ env.OWNER }}/musespace-api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -44,6 +48,6 @@ jobs:
           context: ./muse-space-web
           file: ./muse-space-web/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/musespace-web:latest
+          tags: ghcr.io/${{ env.OWNER }}/musespace-web:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
