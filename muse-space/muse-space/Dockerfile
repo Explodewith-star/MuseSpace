@@ -27,8 +27,10 @@ WORKDIR /app
 # Copy published output
 COPY --from=build --chown=app:app /app/publish .
 
-# Copy prompt templates
-COPY --from=build --chown=app:app /repo/prompts ./prompts
+# Copy prompt templates to /prompts
+# 代码通过 AppContext.BaseDirectory(/app) 向上 5 层计算路径，结果为 /prompts
+COPY --from=build /repo/prompts /prompts
+RUN chown -R app:app /prompts
 
 # Log directory (writable by app user)
 RUN mkdir -p logs && chown app:app logs

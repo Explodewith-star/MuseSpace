@@ -22,6 +22,7 @@ services:
       - Embedding__ApiKey=${EMBEDDING_API_KEY}
     volumes:
       - ./logs:/app/logs
+      - musespace-data:/data   # 原著文件等用户数据持久化
     networks:
       - musespace-net
 
@@ -42,3 +43,6 @@ services:
 networks:
   musespace-net:
     driver: bridge
+
+volumes:
+  musespace-data:   # 命名卷，由 Docker 管理，容器重建后数据不丢失

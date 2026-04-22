@@ -1,0 +1,12 @@
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/*.user
+**/TestResults
+.git
+.gitignore
+.github
+docs
+README*.md
+LICENSE
