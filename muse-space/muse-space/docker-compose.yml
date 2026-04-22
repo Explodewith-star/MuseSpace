@@ -1,6 +1,8 @@
 services:
   api:
-    image: musespace-api:latest
+    # 生产环境：镜像由 GitHub Actions 构建后推送到 Docker Hub
+    # 格式：你的DockerHub用户名/musespace-api:latest
+    image: ${DOCKERHUB_USERNAME}/musespace-api:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -12,17 +14,19 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
-      - ConnectionStrings__MuseSpace=${DB_CONNECTION_STRING}
+      - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
       - Llm__ApiKey=${LLM_API_KEY}
       - Llm__BaseUrl=${LLM_BASE_URL}
       - Llm__ModelName=${LLM_MODEL_NAME}
+      - DeepSeek__ApiKey=${DEEPSEEK_API_KEY}
+      - Embedding__ApiKey=${EMBEDDING_API_KEY}
     volumes:
       - ./logs:/app/logs
     networks:
       - musespace-net
 
   web:
-    image: musespace-web:latest
+    image: ${DOCKERHUB_USERNAME}/musespace-web:latest
     build:
       context: ../muse-space-web
       dockerfile: Dockerfile

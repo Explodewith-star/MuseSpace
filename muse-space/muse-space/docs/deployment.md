@@ -41,10 +41,11 @@ ssh root@152.136.11.140
 
 ```bash
 # 把项目克隆到服务器
-git clone https://github.com/Explodewith-star/MuseSpace.git /opt/musespace
+git clone https://github.com/Explodewith-star/MuseSpace.git ~/musespace/code
 
-# 进入后端目录
-cd /opt/musespace/muse-space
+# 仓库根目录是 ~/musespace/code/muse-space
+# docker-compose.yml 在仓库内的子目录，需要再进一层
+cd ~/musespace/code/muse-space/muse-space
 ```
 
 ---
@@ -62,10 +63,12 @@ nano .env
 把文件内容改成你的真实值：
 
 ```
-DB_CONNECTION_STRING=Host=152.136.11.140;Port=6286;Database=musespace_dev;Username=msadmin;Password=你的真实密码;Pooling=true;Minimum Pool Size=1;Maximum Pool Size=20;
+DB_CONNECTION_STRING=Host=152.136.11.140;Port=6286;Database=musespace_dev;Username=msadmin;Password=leoisAdmin441621.;Pooling=true;Minimum Pool Size=1;Maximum Pool Size=20;
 LLM_BASE_URL=https://openrouter.ai/api/v1
-LLM_API_KEY=sk-or-v1-你的真实Key
+LLM_API_KEY=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
 LLM_MODEL_NAME=z-ai/glm-4.5-air:free
+DEEPSEEK_API_KEY=sk-93b0ffca2024490098eb9da35b6aa279
+EMBEDDING_API_KEY=sk-mepbllkxmhltwshbjfgtfrudymokusygjrgnnuvavtrgdqjk
 ```
 
 **nano 操作说明：**
@@ -75,15 +78,64 @@ LLM_MODEL_NAME=z-ai/glm-4.5-air:free
 
 ---
 
-### 步骤 4：构建并启动后端
+### 步骤 4：配置 GitHub Actions 自动构建（一次性准备）
 
-```bash
-# 只构建并启动后端服务（--no-deps 不启动 web）
-docker compose build api
-docker compose up -d api
+> **为什么这样做？**
+> 服务器在中国大陆无法访问 `mcr.microsoft.com` 拉取 .NET 基础镜像（TLS timeout）。
+> 解决方案：让 GitHub 的服务器帮你构建镜像并推送到 Docker Hub，服务器只需要 `docker pull`。
+
+**第一步：注册 Docker Hub 账号**
+
+访问 [https://hub.docker.com](https://hub.docker.com) 免费注册，记住你的用户名。
+
+**第二步：生成 Docker Hub Access Token**
+
+Docker Hub → 右上角头像 → **Account Settings** → **Security** → **New Access Token**
+- Description 随便写，如 `github-actions`
+- Permissions 选 `Read & Write`
+- 点击 Generate，**复制 token（只显示一次）**
+
+**第三步：在 GitHub 仓库添加 Secrets**
+
+进入你的 GitHub 仓库 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**，依次添加：
+
+| Secret 名称 | 值 |
+|---|---|
+| `DOCKERHUB_USERNAME` | 你的 Docker Hub 用户名 |
+| `DOCKERHUB_TOKEN` | 上一步生成的 Token |
+
+**第四步：推送代码触发构建**
+
+```powershell
+# 在你自己电脑上执行
+cd C:\Users\E1557417\Documents\WorkItem\StoryWorkFlow\MuseSpaceNew
+git add .
+git commit -m "ci: add GitHub Actions docker build workflow"
+git push origin main
 ```
 
-> `build` 第一次会拉取 .NET 镜像，需要等几分钟，这是正常的。
+推送后，进入 GitHub 仓库 → **Actions** 页面，可以看到构建进度，约 5~10 分钟完成。
+构建完成后，Docker Hub 上会出现 `你的用户名/musespace-api:latest` 和 `你的用户名/musespace-web:latest`。
+
+---
+
+### 步骤 5：在服务器上拉取镜像并启动
+
+**通过腾讯云控制台连接服务器，执行：**
+
+```bash
+cd ~/musespace/code/muse-space/muse-space
+
+# 编辑 .env，补充 DOCKERHUB_USERNAME
+nano .env
+# 在文件顶部加一行：DOCKERHUB_USERNAME=你的DockerHub用户名
+
+# 从 Docker Hub 拉取镜像（服务器可以访问 Docker Hub）
+docker compose pull
+
+# 启动所有服务
+docker compose up -d
+```
 
 ---
 
@@ -129,14 +181,9 @@ docker compose logs --tail=50 api
 
 > 确认后端验证通过后再继续。
 
-### 步骤 5：启动前端
+### 步骤 6：启动前端
 
-```bash
-# 仍然在 /opt/musespace/muse-space 目录下
-# 构建并启动前端（会自动识别 ../muse-space-web）
-docker compose build web
-docker compose up -d web
-```
+> 前端镜像已在步骤 5 的 `docker compose pull` 中一并拉取，无需额外操作，服务已随 `docker compose up -d` 启动。
 
 ---
 
@@ -175,7 +222,7 @@ http://152.136.11.140
 ## 日常维护命令
 
 ```bash
-cd /opt/musespace/muse-space
+cd ~/musespace/code/muse-space/muse-space
 
 # 查看所有容器状态
 docker compose ps
@@ -192,11 +239,14 @@ docker compose down
 
 ### 更新部署（代码有更新时）
 
+1. 本地推送代码到 `main` 分支
+2. GitHub Actions 自动重新构建并推送镜像到 Docker Hub（约 5~10 分钟）
+3. 在腾讯云控制台连接服务器，执行：
+
 ```bash
-cd /opt/musespace/muse-space
-git pull origin main
-docker compose build
-docker compose up -d
+cd ~/musespace/code/muse-space/muse-space
+docker compose pull   # 拉取最新镜像
+docker compose up -d  # 滚动更新容器
 ```
 
 ---
