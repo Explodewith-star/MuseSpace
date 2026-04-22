@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -33,7 +33,7 @@ const navItems = computed(() => [
       <AppSidebar :items="navItems" />
     </template>
 
-    <router-view />
+    <router-view :key="route.fullPath" />
   </AppLayout>
 </template>
 

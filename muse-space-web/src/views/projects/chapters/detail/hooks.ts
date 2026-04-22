@@ -1,5 +1,5 @@
-import { ref, reactive, onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+﻿import { ref, reactive, onMounted, computed } from 'vue'
+import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router'
 import { getChapter, updateChapter } from '@/api/chapters'
 import { useToast } from '@/composables/useToast'
 import type { ChapterResponse, UpdateChapterRequest } from '@/types/models'
@@ -25,8 +25,8 @@ export function initChapterDetailState() {
   const router = useRouter()
   const toast = useToast()
 
-  const projectId = route.params.id as string
-  const chapterId = route.params.chapterId as string
+  const projectId = computed(() => route.params.id as string)
+  const chapterId = computed(() => route.params.chapterId as string)
 
   const chapter = ref<ChapterResponse | null>(null)
   const loading = ref(false)
@@ -41,9 +41,9 @@ export function initChapterDetailState() {
   async function load() {
     loading.value = true
     try {
-      chapter.value = await getChapter(projectId, chapterId)
+      chapter.value = await getChapter(projectId.value, chapterId.value)
     } catch {
-      router.push(`/projects/${projectId}/chapters`)
+      router.push(`/projects/${projectId.value}/chapters`)
     } finally {
       loading.value = false
     }
@@ -83,7 +83,7 @@ export function initChapterDetailState() {
       payload.finalText = finalForm.finalText
     }
     try {
-      chapter.value = await updateChapter(projectId, chapterId, payload)
+      chapter.value = await updateChapter(projectId.value, chapterId.value, payload)
       editingSection.value = null
       toast.success('保存成功')
     } catch {
@@ -98,6 +98,18 @@ export function initChapterDetailState() {
   )
 
   onMounted(load)
+
+  onBeforeRouteUpdate(async (to) => {
+    loading.value = true
+    editingSection.value = null
+    try {
+      chapter.value = await getChapter(to.params.id as string, to.params.chapterId as string)
+    } catch {
+      router.push(`/projects/${String(to.params.id)}/chapters`)
+    } finally {
+      loading.value = false
+    }
+  })
 
   return {
     chapter,

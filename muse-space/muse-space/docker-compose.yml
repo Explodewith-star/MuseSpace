@@ -1,0 +1,40 @@
+services:
+  api:
+    image: musespace-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: musespace-api
+    restart: unless-stopped
+    # 不对外暴露端口，只在内部网络供 web 访问
+    expose:
+      - "8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__MuseSpace=${DB_CONNECTION_STRING}
+      - Llm__ApiKey=${LLM_API_KEY}
+      - Llm__BaseUrl=${LLM_BASE_URL}
+      - Llm__ModelName=${LLM_MODEL_NAME}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - musespace-net
+
+  web:
+    image: musespace-web:latest
+    build:
+      context: ../muse-space-web
+      dockerfile: Dockerfile
+    container_name: musespace-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - musespace-net
+
+networks:
+  musespace-net:
+    driver: bridge

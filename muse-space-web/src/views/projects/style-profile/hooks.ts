@@ -1,4 +1,4 @@
-import { ref, reactive, onMounted } from 'vue'
+﻿import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getStyleProfile, upsertStyleProfile } from '@/api/styleProfile'
 import { useToast } from '@/composables/useToast'
@@ -35,7 +35,7 @@ export function initStyleProfileState() {
         dialogueRatio: profile.dialogueRatio ?? '',
         descriptionDensity: profile.descriptionDensity ?? '',
         forbiddenExpressions: profile.forbiddenExpressions ?? '',
-        sampleReferenceText: '',
+        sampleReferenceText: profile.sampleReferenceText ?? '',
       })
     } catch {
       // 404 = 未配置，silent 模式已抑制 toast

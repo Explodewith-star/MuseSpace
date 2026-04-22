@@ -22,7 +22,13 @@ public static class ServiceCollectionExtensions
     {
         // LLM 配置 + 客户端（需要特殊 HttpClient 配置，手动注册）
         services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.SectionName));
-        services.AddHttpClient<ILlmClient, OpenRouterLlmClient>((sp, client) =>
+        services.Configure<DeepSeekOptions>(configuration.GetSection(DeepSeekOptions.SectionName));
+
+        // 渠道选择器（单例，运行时可切换）
+        services.AddSingleton<LlmProviderSelector>();
+
+        // OpenRouter 客户端（具名 HttpClient）
+        services.AddHttpClient<OpenRouterLlmClient>((sp, client) =>
         {
             var options = sp.GetRequiredService<IOptions<LlmOptions>>().Value;
             client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
@@ -30,6 +36,18 @@ public static class ServiceCollectionExtensions
             client.DefaultRequestHeaders.Add("HTTP-Referer", "http://localhost");
             client.Timeout = TimeSpan.FromMinutes(3);
         });
+
+        // DeepSeek 客户端（具名 HttpClient）
+        services.AddHttpClient<DeepSeekLlmClient>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<DeepSeekOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ApiKey}");
+            client.Timeout = TimeSpan.FromMinutes(3);
+        });
+
+        // 路由客户端作为 ILlmClient 的实现
+        services.AddScoped<ILlmClient, RoutingLlmClient>();
 
         // Prompt（有构造参数，手动注册）
         var promptsPath = Path.GetFullPath(

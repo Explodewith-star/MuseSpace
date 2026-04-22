@@ -11,6 +11,7 @@ public sealed class EfStyleProfileRepository : IStyleProfileRepository
 
     public async Task<StyleProfile?> GetByProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
         => await _db.StyleProfiles
+                    .AsNoTracking()
                     .FirstOrDefaultAsync(s => s.StoryProjectId == projectId, cancellationToken);
 
     public async Task SaveAsync(Guid projectId, StyleProfile profile, CancellationToken cancellationToken = default)

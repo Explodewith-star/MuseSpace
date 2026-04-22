@@ -10,4 +10,5 @@ public sealed class StyleProfileResponse
     public string? DialogueRatio { get; init; }
     public string? DescriptionDensity { get; init; }
     public string? ForbiddenExpressions { get; init; }
+    public string? SampleReferenceText { get; init; }
 }

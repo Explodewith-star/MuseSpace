@@ -164,3 +164,10 @@ export interface ChatResponse {
   answer: string
   durationMs: number
 }
+
+// ---------- LLM Provider ----------
+export type LlmProviderType = 'OpenRouter' | 'DeepSeek'
+
+export interface LlmProviderStatus {
+  active: LlmProviderType
+}
