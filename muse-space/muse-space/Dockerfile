@@ -23,19 +23,17 @@ RUN dotnet publish src/MuseSpace.Api/MuseSpace.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-
+# .NET 8+ 官方镜像已内置非 root 用户 'app'（UID 1654），无需手动创建
 # Copy published output
-COPY --from=build /app/publish .
+COPY --from=build --chown=app:app /app/publish .
 
 # Copy prompt templates
-COPY --from=build /repo/prompts ./prompts
+COPY --from=build --chown=app:app /repo/prompts ./prompts
 
-# Log directory (writable by appuser)
-RUN mkdir -p logs && chown -R appuser:appgroup logs
+# Log directory (writable by app user)
+RUN mkdir -p logs && chown app:app logs
 
-USER appuser
+USER app
 
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "MuseSpace.Api.dll"]
