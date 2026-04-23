@@ -1,8 +1,9 @@
 import { ref, reactive, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { generateSceneDraft } from '@/api/draft'
+import { getLlmProvider, setLlmProvider, setLlmModel } from '@/api/llmProvider'
 import { useToast } from '@/composables/useToast'
-import type { GenerateSceneDraftResponse } from '@/types/models'
+import type { GenerateSceneDraftResponse, LlmModelOption, LlmProviderType } from '@/types/models'
 import type { SceneDraftForm } from './types'
 
 export function initDraftState() {
@@ -45,6 +46,52 @@ export function initDraftState() {
   const result = ref<GenerateSceneDraftResponse | null>(null)
   const elapsed = ref(0)
 
+  // ── AI 渠道 & 模型 ──────────────────────────────────────────────
+  const selectedProvider = ref<LlmProviderType>('OpenRouter')
+  const availableModels = ref<LlmModelOption[]>([])
+  const selectedModel = ref('')
+  const providerSwitching = ref(false)
+
+  onMounted(async () => {
+    try {
+      const status = await getLlmProvider()
+      selectedProvider.value = status.active
+      availableModels.value = status.availableModels
+      selectedModel.value = status.currentModel
+    } catch {
+      // 获取失败时不影响生成功能
+    }
+  })
+
+  async function onProviderChange(provider: LlmProviderType): Promise<void> {
+    if (provider === selectedProvider.value) return
+    providerSwitching.value = true
+    try {
+      const status = await setLlmProvider(provider)
+      selectedProvider.value = status.active
+      selectedModel.value = status.currentModel
+      toast.success(`已切换至 ${provider}`)
+    } catch {
+      toast.error('切换渠道失败')
+    } finally {
+      providerSwitching.value = false
+    }
+  }
+
+  async function onModelChange(modelId: string): Promise<void> {
+    if (modelId === selectedModel.value) return
+    providerSwitching.value = true
+    try {
+      const status = await setLlmModel(modelId)
+      selectedModel.value = status.currentModel
+      toast.success(`已切换：${modelId}`)
+    } catch {
+      toast.error('切换模型失败')
+    } finally {
+      providerSwitching.value = false
+    }
+  }
+
   let timer: ReturnType<typeof setInterval> | null = null
 
   function startTimer(): void {
@@ -83,5 +130,9 @@ export function initDraftState() {
     }
   }
 
-  return { form, generating, result, elapsed, generate }
+  return {
+    form, generating, result, elapsed, generate,
+    selectedProvider, availableModels, selectedModel, providerSwitching,
+    onProviderChange, onModelChange,
+  }
 }

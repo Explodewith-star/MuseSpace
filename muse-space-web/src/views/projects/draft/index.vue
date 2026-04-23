@@ -3,9 +3,14 @@ import AppButton from '@/components/base/AppButton.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 import { initDraftState } from './hooks'
 
-const { form, generating, result, elapsed, generate } = initDraftState()
+const {
+  form, generating, result, elapsed, generate,
+  selectedProvider, availableModels, selectedModel, providerSwitching,
+  onProviderChange, onModelChange,
+} = initDraftState()
 </script>
 
 <template>
@@ -32,6 +37,40 @@ const { form, generating, result, elapsed, generate } = initDraftState()
           placeholder="如：紧张 → 震撼 → 压抑"
         />
       </div>
+
+      <!-- AI 配置 -->
+      <div class="ai-config">
+        <p class="ai-config__label">AI 配置</p>
+        <!-- 渠道切换 -->
+        <div class="provider-toggle">
+          <button
+            :class="['provider-btn', { active: selectedProvider === 'OpenRouter' }]"
+            :disabled="providerSwitching || generating"
+            @click="onProviderChange('OpenRouter')"
+          >
+            OpenRouter
+          </button>
+          <button
+            :class="['provider-btn', { active: selectedProvider === 'DeepSeek' }]"
+            :disabled="providerSwitching || generating"
+            @click="onProviderChange('DeepSeek')"
+          >
+            DeepSeek
+          </button>
+        </div>
+        <!-- 模型选择（仅 OpenRouter 渠道显示） -->
+        <AppSelect
+          v-if="selectedProvider === 'OpenRouter' && availableModels.length > 0"
+          :model-value="selectedModel"
+          :options="availableModels.map(m => ({ value: m.id, label: `${m.label}  (${m.id})` }))"
+          :disabled="providerSwitching || generating"
+          @update:model-value="onModelChange"
+        />
+        <p v-else-if="selectedProvider === 'DeepSeek'" class="ai-config__hint">
+          使用 DeepSeek 默认模型
+        </p>
+      </div>
+
       <div class="form-actions">
         <AppButton
           size="lg"
@@ -118,6 +157,66 @@ const { form, generating, result, elapsed, generate } = initDraftState()
 .form-actions {
   margin-top: 16px;
   flex-shrink: 0;
+}
+
+/* AI 配置区块 */
+.ai-config {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-config__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.provider-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.provider-btn {
+  flex: 1;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-page);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.provider-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.provider-btn.active {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.provider-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-config__hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
 }
 
 .result-body {

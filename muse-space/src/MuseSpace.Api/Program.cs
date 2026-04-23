@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using MuseSpace.Api.Extensions;
 using Scalar.AspNetCore;
 using Serilog;
@@ -16,7 +17,9 @@ try
         .ReadFrom.Services(services)
         .Enrich.FromLogContext());
 
-    builder.Services.AddControllers();
+    builder.Services.AddControllers()
+        .AddJsonOptions(opts =>
+            opts.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
     builder.Services.AddOpenApi();
     builder.Services.AddMuseSpaceServices(builder.Configuration);
 

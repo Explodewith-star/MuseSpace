@@ -8,3 +8,7 @@ export function getLlmProvider(): Promise<LlmProviderStatus> {
 export function setLlmProvider(provider: string): Promise<LlmProviderStatus> {
   return request.put('/llm-provider', { provider })
 }
+
+export function setLlmModel(modelId: string): Promise<LlmProviderStatus> {
+  return request.put('/llm-provider/model', { modelId })
+}

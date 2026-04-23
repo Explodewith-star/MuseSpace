@@ -1,6 +1,5 @@
 ﻿<script setup lang="ts">
 import AppThemeToggle from './AppThemeToggle.vue'
-import LlmProviderSelector from './LlmProviderSelector.vue'
 
 interface Props {
   title?: string
@@ -26,7 +25,6 @@ defineProps<Props>()
     </div>
     <div class="app-header__right">
       <slot name="right" />
-      <LlmProviderSelector />
       <AppThemeToggle />
     </div>
   </header>

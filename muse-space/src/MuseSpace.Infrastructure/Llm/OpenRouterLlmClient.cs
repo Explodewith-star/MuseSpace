@@ -15,15 +15,18 @@ public sealed class OpenRouterLlmClient : ILlmClient
 {
     private readonly HttpClient _httpClient;
     private readonly LlmOptions _options;
+    private readonly LlmProviderSelector _selector;
     private readonly ILogger<OpenRouterLlmClient> _logger;
 
     public OpenRouterLlmClient(
         HttpClient httpClient,
         IOptions<LlmOptions> options,
+        LlmProviderSelector selector,
         ILogger<OpenRouterLlmClient> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _selector = selector;
         _logger = logger;
     }
 
@@ -32,9 +35,11 @@ public sealed class OpenRouterLlmClient : ILlmClient
         string userPrompt,
         CancellationToken cancellationToken = default)
     {
+        // 运行时切换的模型优先，否则用配置文件默认值
+        var modelName = _selector.ActiveModel ?? _options.ModelName;
         var request = new ChatCompletionRequest
         {
-            Model = _options.ModelName,
+            Model = modelName,
             Messages =
             [
                 new ChatMessage { Role = "system", Content = systemPrompt },
@@ -42,7 +47,7 @@ public sealed class OpenRouterLlmClient : ILlmClient
             ]
         };
 
-        _logger.LogInformation("Calling OpenRouter model {Model}...", _options.ModelName);
+        _logger.LogInformation("Calling OpenRouter model {Model}...", modelName);
 
         HttpResponseMessage response;
         try
