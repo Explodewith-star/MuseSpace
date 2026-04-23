@@ -28,17 +28,24 @@ public sealed class GenerationLogService : IGenerationLogService
             record.DurationMs,
             record.Success);
 
-        Directory.CreateDirectory(_logDirectory);
-
-        var fileName = $"{record.CreatedAt:yyyyMMdd_HHmmss}_{record.RequestId}.json";
-        var filePath = Path.Combine(_logDirectory, fileName);
-
-        var json = JsonSerializer.Serialize(record, new JsonSerializerOptions
+        try
         {
-            WriteIndented = true,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        });
-        await File.WriteAllTextAsync(filePath, json, cancellationToken);
+            Directory.CreateDirectory(_logDirectory);
+
+            var fileName = $"{record.CreatedAt:yyyyMMdd_HHmmss}_{record.RequestId}.json";
+            var filePath = Path.Combine(_logDirectory, fileName);
+
+            var json = JsonSerializer.Serialize(record, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
+            await File.WriteAllTextAsync(filePath, json, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Generation] 写入日志文件失败，跳过（不影响生成结果）");
+        }
     }
 }
 

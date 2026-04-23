@@ -215,12 +215,22 @@ docker compose logs -f
 # 只看后端日志
 docker compose logs -f api
 
+# 开启所有服务
+docker compose up -d
+
 # 重启所有服务
 docker compose restart
 
 # 停止所有服务
 docker compose down
+
+# 强制更改为一样的密码
+docker exec -it musespace_db psql -U msadmin -d musespace_dev -c "ALTER USER msadmin WITH PASSWORD 'leoisAdmin441621';"
+
+# 看 API 容器实际收到的连接字符串
+docker exec musespace-api printenv ConnectionStrings__DefaultConnection
 ```
+
 
 ---
 
