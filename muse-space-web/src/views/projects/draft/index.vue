@@ -197,7 +197,7 @@ const {
   transition: all 0.15s;
 }
 
-.provider-btn:hover:not(:disabled) {
+.provider-btn:not(.active):hover:not(:disabled) {
   border-color: var(--color-primary);
   color: var(--color-primary);
 }

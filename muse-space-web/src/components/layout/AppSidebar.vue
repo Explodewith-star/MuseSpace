@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRoute } from 'vue-router'
 
 interface NavItem {
   label: string
@@ -19,7 +20,12 @@ withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{ 'update:collapsed': [value: boolean] }>()
 
+const route = useRoute()
 const isCollapsed = ref(false)
+
+function isActive(to: string): boolean {
+  return route.path === to || route.path.startsWith(to + '/')
+}
 
 function toggle() {
   isCollapsed.value = !isCollapsed.value
@@ -34,8 +40,7 @@ function toggle() {
         v-for="item in items"
         :key="item.to"
         :to="item.to"
-        class="app-sidebar__item"
-        active-class="app-sidebar__item--active"
+        :class="['app-sidebar__item', { 'app-sidebar__item--active': isActive(item.to) }]"
       >
         <i :class="['app-sidebar__icon', item.icon]" />
         <span v-if="!isCollapsed" class="app-sidebar__label">{{ item.label }}</span>

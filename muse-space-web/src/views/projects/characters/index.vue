@@ -246,6 +246,7 @@ const {
   flex-direction: column;
   gap: 10px;
   transition: border-color 0.15s;
+  overflow: hidden;
 }
 
 .char-card:hover {
@@ -298,6 +299,8 @@ const {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  overflow: hidden;
+  max-height: 52px; /* 最多两行 */
 }
 
 .card-delete-btn {
