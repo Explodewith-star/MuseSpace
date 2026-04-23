@@ -24,10 +24,7 @@ public static class ServiceCollectionExtensions
         services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.SectionName));
         services.Configure<DeepSeekOptions>(configuration.GetSection(DeepSeekOptions.SectionName));
 
-        // 渠道选择器（单例，运行时可切换）
-        services.AddSingleton<LlmProviderSelector>();
-
-        // OpenRouter 客户端（具名 HttpClient）
+        // OpenRouter 客户端（typed HttpClient，不直接绑定 ILlmClient）
         services.AddHttpClient<OpenRouterLlmClient>((sp, client) =>
         {
             var options = sp.GetRequiredService<IOptions<LlmOptions>>().Value;
@@ -37,7 +34,7 @@ public static class ServiceCollectionExtensions
             client.Timeout = TimeSpan.FromMinutes(3);
         });
 
-        // DeepSeek 客户端（具名 HttpClient）
+        // DeepSeek 客户端
         services.AddHttpClient<DeepSeekLlmClient>((sp, client) =>
         {
             var options = sp.GetRequiredService<IOptions<DeepSeekOptions>>().Value;
@@ -45,6 +42,9 @@ public static class ServiceCollectionExtensions
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ApiKey}");
             client.Timeout = TimeSpan.FromMinutes(3);
         });
+
+        // 运行时渠道选择器（单例，供 Controller 和 RoutingLlmClient 共享）
+        services.AddSingleton<LlmProviderSelector>();
 
         // 路由客户端作为 ILlmClient 的实现
         services.AddScoped<ILlmClient, RoutingLlmClient>();
