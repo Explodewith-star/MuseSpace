@@ -1,3 +1,4 @@
+Ôªøusing MuseSpace.Application.Abstractions.Memory;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Abstractions.Story;
 using MuseSpace.Domain.Entities;
@@ -5,8 +6,8 @@ using MuseSpace.Domain.Entities;
 namespace MuseSpace.Infrastructure.Story;
 
 /// <summary>
-/// ¥” JSON Œƒº˛≤÷¥¢÷–∂¡»°π  ¬◊ ¡œ£¨∞¥…œœ¬Œƒ‘§À„∆¥◊∞ StoryContext°£
-/// ‘§À„£∫◊ÓΩ¸ 3 ’¬’™“™°¢◊Ó∂‡ 4 ∏ˆΩ«…´°¢◊Ó∂‡ 8 Ãı ¿ΩÁπÊ‘Ú£®∞¥ Priority Ωµ–Ú£©°£
+/// Builds StoryContext by aggregating data from multiple repositories.
+/// Budget: last 3 chapter summaries, up to 4 characters, up to 8 world rules (ordered by Priority).
 /// </summary>
 public sealed class StoryContextBuilder : IStoryContextBuilder
 {
@@ -15,19 +16,22 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
     private readonly IWorldRuleRepository _worldRuleRepo;
     private readonly IChapterRepository _chapterRepo;
     private readonly IStyleProfileRepository _styleProfileRepo;
+    private readonly INovelMemorySearchService _novelMemorySearchService;
 
     public StoryContextBuilder(
         IStoryProjectRepository projectRepo,
         ICharacterRepository characterRepo,
         IWorldRuleRepository worldRuleRepo,
         IChapterRepository chapterRepo,
-        IStyleProfileRepository styleProfileRepo)
+        IStyleProfileRepository styleProfileRepo,
+        INovelMemorySearchService novelMemorySearchService)
     {
         _projectRepo = projectRepo;
         _characterRepo = characterRepo;
         _worldRuleRepo = worldRuleRepo;
         _chapterRepo = chapterRepo;
         _styleProfileRepo = styleProfileRepo;
+        _novelMemorySearchService = novelMemorySearchService;
     }
 
     public async Task<StoryContext> BuildAsync(StoryContextRequest request, CancellationToken cancellationToken = default)
@@ -39,7 +43,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
             .Where(c => !string.IsNullOrWhiteSpace(c.Summary))
             .OrderByDescending(c => c.Number)
             .Take(3)
-            .Select(c => $"µ⁄ {c.Number} ’¬°∂{c.Title ?? "ŒﬁÃ‚"}°∑£∫{c.Summary}")
+            .Select(c => $"Á¨¨ {c.Number} Á´†„Ää{c.Title ?? "Êó†Ê†áÈ¢ò"}„Äã‚Ä¶{c.Summary}")
             .ToList();
 
         var characters = await _characterRepo.GetByProjectAsync(request.StoryProjectId, cancellationToken);
@@ -55,15 +59,16 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         var worldRules = rules
             .OrderByDescending(r => r.Priority)
             .Take(8)
-            .Select(r => $"[{r.Category ?? "πÊ‘Ú"}]{(r.IsHardConstraint ? "°æ«ø÷∆°ø" : "")} {r.Title}£∫{r.Description}")
+            .Select(r => $"[{r.Category ?? "ÈÄöÁî®"}]{(r.IsHardConstraint ? "„ÄêÂº∫Âà∂„Äë" : "")} {r.Title}Ôºö{r.Description}")
             .ToList();
 
         var styleProfile = await _styleProfileRepo.GetByProjectAsync(request.StoryProjectId, cancellationToken);
+        var novelSnippets = await GetNovelContextSnippetsAsync(request, cancellationToken);
 
         return new StoryContext
         {
             ProjectSummary = project is not null
-                ? $"°∂{project.Name}°∑{(project.Genre is not null ? $"£®{project.Genre}£©" : "")}£∫{project.Description}"
+                ? $"„Ää{project.Name}„Äã{(project.Genre is not null ? $"„Äê{project.Genre}„Äë" : "")}Ôºö{project.Description}"
                 : null,
             RecentChapterSummaries = recentSummaries,
             InvolvedCharacterCards = characterCards,
@@ -71,32 +76,53 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
             StyleRequirement = FormatStyleRequirement(styleProfile),
             SceneGoal = request.SceneGoal,
             Conflict = request.Conflict,
-            EmotionCurve = request.EmotionCurve
+            EmotionCurve = request.EmotionCurve,
+            NovelContextSnippets = novelSnippets
         };
+    }
+
+    private async Task<List<string>> GetNovelContextSnippetsAsync(
+        StoryContextRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.SceneGoal))
+            return [];
+        try
+        {
+            var results = await _novelMemorySearchService.SearchAsync(
+                request.StoryProjectId, request.SceneGoal, topK: 5, ct: cancellationToken);
+            return results
+                .Where(r => r.Similarity > 0.3)
+                .Select(r => r.Content)
+                .ToList();
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     private static string FormatCharacterCard(Character c)
     {
-        var parts = new List<string> { $"°æ{c.Name}°ø" };
-        if (c.Age.HasValue) parts.Add($"{c.Age}ÀÍ");
+        var parts = new List<string> { $"„Äê{c.Name}„Äë" };
+        if (c.Age.HasValue) parts.Add($"{c.Age}Â≤Å");
         if (!string.IsNullOrWhiteSpace(c.Role)) parts.Add(c.Role);
-        if (!string.IsNullOrWhiteSpace(c.PersonalitySummary)) parts.Add($"–‘∏Ò£∫{c.PersonalitySummary}");
-        if (!string.IsNullOrWhiteSpace(c.Motivation)) parts.Add($"∂Øª˙£∫{c.Motivation}");
-        if (!string.IsNullOrWhiteSpace(c.SpeakingStyle)) parts.Add($"Àµª∞∑Ω Ω£∫{c.SpeakingStyle}");
-        if (!string.IsNullOrWhiteSpace(c.CurrentState)) parts.Add($"µ±«∞◊¥Ã¨£∫{c.CurrentState}");
-        if (!string.IsNullOrWhiteSpace(c.ForbiddenBehaviors)) parts.Add($"≤ªª·◊ˆ£∫{c.ForbiddenBehaviors}");
-        return string.Join("£¨", parts);
+        if (!string.IsNullOrWhiteSpace(c.PersonalitySummary)) parts.Add($"ÊÄßÊ†ºÔºö{c.PersonalitySummary}");
+        if (!string.IsNullOrWhiteSpace(c.Motivation)) parts.Add($"Âä®Êú∫Ôºö{c.Motivation}");
+        if (!string.IsNullOrWhiteSpace(c.SpeakingStyle)) parts.Add($"ËØ¥ËØùÊñπÂºèÔºö{c.SpeakingStyle}");
+        if (!string.IsNullOrWhiteSpace(c.CurrentState)) parts.Add($"ÂΩìÂâçÁä∂ÊÄÅÔºö{c.CurrentState}");
+        if (!string.IsNullOrWhiteSpace(c.ForbiddenBehaviors)) parts.Add($"Á¶ÅÊ≠¢Ë°å‰∏∫Ôºö{c.ForbiddenBehaviors}");
+        return string.Join("Ôºõ", parts);
     }
 
     private static string? FormatStyleRequirement(StyleProfile? profile)
     {
         if (profile is null) return null;
         var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(profile.Tone)) parts.Add($"ª˘µ˜£∫{profile.Tone}");
-        if (!string.IsNullOrWhiteSpace(profile.SentenceLengthPreference)) parts.Add($"æ‰ Ω£∫{profile.SentenceLengthPreference}");
-        if (!string.IsNullOrWhiteSpace(profile.DialogueRatio)) parts.Add($"∂‘ª∞±»¿˝£∫{profile.DialogueRatio}");
-        if (!string.IsNullOrWhiteSpace(profile.DescriptionDensity)) parts.Add($"√Ë–¥√‹∂»£∫{profile.DescriptionDensity}");
-        if (!string.IsNullOrWhiteSpace(profile.ForbiddenExpressions)) parts.Add($"Ω˚”√±Ì¥Ô£∫{profile.ForbiddenExpressions}");
-        return parts.Count > 0 ? string.Join("£ª", parts) : null;
+        if (!string.IsNullOrWhiteSpace(profile.Tone)) parts.Add($"ËØ≠Ë∞ÉÔºö{profile.Tone}");
+        if (!string.IsNullOrWhiteSpace(profile.SentenceLengthPreference)) parts.Add($"Âè•ÂºèÔºö{profile.SentenceLengthPreference}");
+        if (!string.IsNullOrWhiteSpace(profile.DialogueRatio)) parts.Add($"ÂØπËØùÊØî‰æãÔºö{profile.DialogueRatio}");
+        if (!string.IsNullOrWhiteSpace(profile.DescriptionDensity)) parts.Add($"ÊèèÂÜôÂØÜÂ∫¶Ôºö{profile.DescriptionDensity}");
+        if (!string.IsNullOrWhiteSpace(profile.ForbiddenExpressions)) parts.Add($"Á¶ÅÁî®Ë°®ËææÔºö{profile.ForbiddenExpressions}");
+        return parts.Count > 0 ? string.Join("Ôºõ", parts) : null;
     }
 }

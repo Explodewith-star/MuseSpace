@@ -1,5 +1,5 @@
 import request from './http'
-import type { CharacterResponse, CreateCharacterRequest, UpdateCharacterRequest } from '@/types/models'
+import type { CharacterResponse, CreateCharacterRequest, UpdateCharacterRequest, ExtractCharacterResponse } from '@/types/models'
 
 export function getCharacters(projectId: string): Promise<CharacterResponse[]> {
   return request.get(`/projects/${projectId}/characters`)
@@ -22,4 +22,11 @@ export function updateCharacter(
 
 export function deleteCharacter(projectId: string, characterId: string): Promise<void> {
   return request.delete(`/projects/${projectId}/characters/${characterId}`)
+}
+
+export function extractCharacterFromNovel(
+  projectId: string,
+  query: string,
+): Promise<ExtractCharacterResponse> {
+  return request.post(`/projects/${projectId}/characters/extract-from-novel`, { query })
 }

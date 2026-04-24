@@ -17,6 +17,13 @@ public class MuseSpaceDbContext : DbContext
     public DbSet<WorldRule> WorldRules => Set<WorldRule>();
     public DbSet<GenerationRecord> GenerationRecords => Set<GenerationRecord>();
 
+    // ── 用户认证 ───────────────────────────────────────────────────────────────
+    public DbSet<User> Users => Set<User>();
+    public DbSet<UserLlmPreference> UserLlmPreferences => Set<UserLlmPreference>();
+
+    // ── Agent 运行记录 ──────────────────────────────────────────────────────────
+    public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
+
     // ── public schema：原著导入 ───────────────────────────────────────────────
     public DbSet<Novel> Novels => Set<Novel>();
     public DbSet<NovelChunk> NovelChunks => Set<NovelChunk>();
@@ -35,6 +42,8 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.Description).HasColumnType("text");
             entity.Property(e => e.Genre).HasMaxLength(200);
             entity.Property(e => e.NarrativePerspective).HasMaxLength(200);
+            entity.Property(e => e.UserId).IsRequired(false);
+            entity.HasIndex(e => e.UserId);
         });
 
         // ── Chapter ──────────────────────────────────────────────────────────
@@ -166,6 +175,44 @@ public class MuseSpaceDbContext : DbContext
             //   "CREATE INDEX idx_chunk_embeddings_hnsw " +
             //   "ON memory.chunk_embeddings USING hnsw (embedding vector_cosine_ops) " +
             //   "WITH (m = 16, ef_construction = 64);");
+        });
+
+        // ── User ──────────────────────────────────────────────────────────────
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PhoneNumber).HasMaxLength(20).IsRequired();
+            entity.HasIndex(e => e.PhoneNumber).IsUnique();
+            entity.Property(e => e.Role).HasMaxLength(10).IsRequired().HasDefaultValue("User");
+        });
+
+        // ── UserLlmPreference ─────────────────────────────────────────────────
+        modelBuilder.Entity<UserLlmPreference>(entity =>
+        {
+            entity.ToTable("user_llm_preferences");
+            entity.HasKey(e => e.UserId);
+            entity.Property(e => e.Provider).HasMaxLength(20).IsRequired().HasDefaultValue("OpenRouter");
+            entity.Property(e => e.ModelId).HasMaxLength(100);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── AgentRun ──────────────────────────────────────────────────────────
+        modelBuilder.Entity<AgentRun>(entity =>
+        {
+            entity.ToTable("agent_runs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AgentName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.InputPreview).HasColumnType("text");
+            entity.Property(e => e.OutputPreview).HasColumnType("text");
+            entity.Property(e => e.ErrorMessage).HasColumnType("text");
+            entity.HasIndex(e => e.AgentName);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.StartedAt);
         });
     }
 }

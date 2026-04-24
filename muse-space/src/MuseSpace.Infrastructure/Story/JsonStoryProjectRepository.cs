@@ -40,4 +40,10 @@ public sealed class JsonStoryProjectRepository : JsonRepositoryBase, IStoryProje
         if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         await Task.CompletedTask;
     }
+
+    public async Task<List<StoryProject>> GetByUserIdAsync(Guid? userId, CancellationToken cancellationToken = default)
+    {
+        var all = await GetAllAsync(cancellationToken);
+        return all.Where(p => p.UserId == userId).ToList();
+    }
 }

@@ -8,6 +8,8 @@ public class StoryProject
     public string? Genre { get; set; }
     public string? NarrativePerspective { get; set; }
     public Guid? DefaultStyleProfileId { get; set; }
+    /// <summary>null = 游客共享项目；有值 = 该用户的私有项目</summary>
+    public Guid? UserId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

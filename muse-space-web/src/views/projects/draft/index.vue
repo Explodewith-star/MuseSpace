@@ -3,13 +3,11 @@ import AppButton from '@/components/base/AppButton.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
-import AppSelect from '@/components/base/AppSelect.vue'
 import { initDraftState } from './hooks'
 
 const {
   form, generating, result, elapsed, generate,
-  selectedProvider, availableModels, selectedModel, providerSwitching,
-  onProviderChange, onModelChange,
+  selectedProvider, selectedModel,
 } = initDraftState()
 </script>
 
@@ -38,36 +36,18 @@ const {
         />
       </div>
 
-      <!-- AI 配置 -->
+      <!-- 当前 AI 配置（只读展示；切换请到顶部用户菜单） -->
       <div class="ai-config">
-        <p class="ai-config__label">AI 配置</p>
-        <!-- 渠道切换 -->
-        <div class="provider-toggle">
-          <button
-            :class="['provider-btn', { active: selectedProvider === 'OpenRouter' }]"
-            :disabled="providerSwitching || generating"
-            @click="onProviderChange('OpenRouter')"
-          >
-            OpenRouter
-          </button>
-          <button
-            :class="['provider-btn', { active: selectedProvider === 'DeepSeek' }]"
-            :disabled="providerSwitching || generating"
-            @click="onProviderChange('DeepSeek')"
-          >
-            DeepSeek
-          </button>
+        <p class="ai-config__label">
+          <i class="i-lucide-cpu" />
+          当前 AI 模型
+        </p>
+        <div class="ai-config__readonly">
+          <AppBadge variant="primary" size="sm">{{ selectedProvider }}</AppBadge>
+          <span class="ai-config__model">{{ selectedModel || '—' }}</span>
         </div>
-        <!-- 模型选择（仅 OpenRouter 渠道显示） -->
-        <AppSelect
-          v-if="selectedProvider === 'OpenRouter' && availableModels.length > 0"
-          :model-value="selectedModel"
-          :options="availableModels.map(m => ({ value: m.id, label: `${m.label}  (${m.id})` }))"
-          :disabled="providerSwitching || generating"
-          @update:model-value="onModelChange"
-        />
-        <p v-else-if="selectedProvider === 'DeepSeek'" class="ai-config__hint">
-          使用 DeepSeek 默认模型
+        <p class="ai-config__hint">
+          如需切换，请点击右上角用户菜单
         </p>
       </div>
 
@@ -175,42 +155,30 @@ const {
   font-weight: 500;
   color: var(--color-text-muted);
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.provider-toggle {
+.ai-config__readonly {
   display: flex;
-  gap: 6px;
-}
-
-.provider-btn {
-  flex: 1;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  background-color: var(--color-bg-page);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s;
 }
 
-.provider-btn:not(.active):hover:not(:disabled) {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.provider-btn.active {
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
-  color: #fff;
-}
-
-.provider-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.ai-config__model {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ai-config__hint {

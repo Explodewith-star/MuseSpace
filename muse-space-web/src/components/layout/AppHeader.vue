@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import AppThemeToggle from './AppThemeToggle.vue'
+import UserMenu from './UserMenu.vue'
 
 interface Props {
   title?: string
@@ -25,6 +26,7 @@ defineProps<Props>()
     </div>
     <div class="app-header__right">
       <slot name="right" />
+      <UserMenu />
       <AppThemeToggle />
     </div>
   </header>

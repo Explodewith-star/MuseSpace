@@ -62,7 +62,10 @@ public sealed class SceneDraftSkill : ISkill
                 ["style_requirement"] = storyContext.StyleRequirement ?? string.Empty,
                 ["scene_goal"] = storyContext.SceneGoal,
                 ["conflict"] = storyContext.Conflict ?? string.Empty,
-                ["emotion_curve"] = storyContext.EmotionCurve ?? string.Empty
+                ["emotion_curve"] = storyContext.EmotionCurve ?? string.Empty,
+                ["novel_context"] = storyContext.NovelContextSnippets.Count > 0
+                    ? string.Join("\n\n---\n\n", storyContext.NovelContextSnippets)
+                    : string.Empty
             };
 
             // 4. Render prompts

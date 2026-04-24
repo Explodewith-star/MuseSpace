@@ -7,5 +7,6 @@ public sealed class StoryProjectResponse
     public string? Description { get; init; }
     public string? Genre { get; init; }
     public string? NarrativePerspective { get; init; }
+    public Guid? UserId { get; init; }
     public DateTime CreatedAt { get; init; }
 }

@@ -31,6 +31,9 @@ Write a scene draft based on the following information.
 **Style Requirement:**
 {{style_requirement}}
 
+**Original Novel Reference (relevant excerpts):**
+{{novel_context}}
+
 **Scene Goal:**
 {{scene_goal}}
 

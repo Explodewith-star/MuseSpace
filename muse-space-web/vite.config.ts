@@ -50,8 +50,15 @@ export default defineConfig({
     open: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5142',
+        target: 'https://localhost:7126',
         changeOrigin: true,
+        secure: false, // 信任本地自签名证书
+      },
+      '/hubs': {
+        target: 'https://localhost:7126',
+        changeOrigin: true,
+        secure: false,
+        ws: true,
       },
     },
   },

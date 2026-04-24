@@ -12,10 +12,11 @@ public sealed class StoryProjectAppService
     public StoryProjectAppService(IStoryProjectRepository repository)
         => _repository = repository;
 
-    public async Task<StoryProjectResponse> CreateAsync(CreateStoryProjectRequest request, CancellationToken cancellationToken = default)
+    public async Task<StoryProjectResponse> CreateAsync(CreateStoryProjectRequest request, Guid? userId, CancellationToken cancellationToken = default)
     {
         var project = request.Adapt<StoryProject>();
         project.Id = Guid.NewGuid();
+        project.UserId = userId;
         project.CreatedAt = DateTime.UtcNow;
         project.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveAsync(project, cancellationToken);
@@ -31,6 +32,12 @@ public sealed class StoryProjectAppService
     public async Task<List<StoryProjectResponse>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         var projects = await _repository.GetAllAsync(cancellationToken);
+        return projects.Adapt<List<StoryProjectResponse>>();
+    }
+
+    public async Task<List<StoryProjectResponse>> GetByUserIdAsync(Guid? userId, CancellationToken cancellationToken = default)
+    {
+        var projects = await _repository.GetByUserIdAsync(userId, cancellationToken);
         return projects.Adapt<List<StoryProjectResponse>>();
     }
 

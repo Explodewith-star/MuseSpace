@@ -7,6 +7,8 @@ interface Props {
   error?: string
   label?: string
   prefix?: string
+  prefixIcon?: string
+  type?: string
 }
 
 defineProps<Props>()
@@ -17,9 +19,13 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
   <div class="app-input-wrap">
     <label v-if="label" class="app-input-label">{{ label }}</label>
     <div :class="['app-input-box', { 'app-input-box--error': error }]">
-      <span v-if="prefix" class="app-input-prefix">{{ prefix }}</span>
+      <span v-if="prefixIcon || prefix" class="app-input-prefix">
+        <i v-if="prefixIcon" :class="prefixIcon" class="app-input-prefix-icon" />
+        <template v-else>{{ prefix }}</template>
+      </span>
       <input
         class="app-input"
+        :type="type ?? 'text'"
         :value="modelValue"
         :placeholder="placeholder"
         :disabled="disabled"
@@ -63,15 +69,24 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
 }
 
 .app-input-prefix {
-  padding: 0 10px;
+  padding: 0 4px 0 10px;
   font-size: 13px;
   color: var(--color-text-muted);
-  background-color: var(--color-bg-elevated);
-  border-right: 1px solid var(--color-border);
+  background-color: transparent;
   height: 100%;
   display: flex;
   align-items: center;
   white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.app-input-box:focus-within .app-input-prefix {
+  color: var(--color-primary);
+}
+
+.app-input-prefix-icon {
+  font-size: 16px;
+  display: inline-block;
 }
 
 .app-input {

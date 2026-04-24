@@ -7,13 +7,15 @@ public enum LlmProviderType
 }
 
 /// <summary>
-/// 运行时可切换的 LLM 渠道选择器（单例，线程安全）。
-/// ActiveModel 为 null 时表示使用配置文件中的默认模型。
+/// 运行时 LLM 渠道选择器。
+/// ⚠️ 注册为 Scoped：每个 HTTP 请求内一致，跨请求/跨用户隔离。
+/// 由 <c>LlmPreferenceInitializer</c> 在请求开始时根据当前登录用户的偏好填充。
+/// 游客请求（无 JWT）保持默认值 OpenRouter，<c>ActiveModel</c> 为 null（走配置默认）。
 /// </summary>
 public sealed class LlmProviderSelector
 {
-    private volatile LlmProviderType _active = LlmProviderType.OpenRouter;
-    private volatile string? _activeModel = null;
+    private LlmProviderType _active = LlmProviderType.OpenRouter;
+    private string? _activeModel;
 
     public LlmProviderType Active
     {

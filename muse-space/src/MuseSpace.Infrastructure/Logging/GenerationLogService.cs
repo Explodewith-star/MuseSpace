@@ -1,23 +1,22 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using MuseSpace.Application.Abstractions.Logging;
 using MuseSpace.Domain.Entities;
 
 namespace MuseSpace.Infrastructure.Logging;
 
+/// <summary>
+/// 生成记录日志服务：仅通过 Serilog 结构化日志记录，不再写入 JSON 文件。
+/// </summary>
 public sealed class GenerationLogService : IGenerationLogService
 {
     private readonly ILogger<GenerationLogService> _logger;
-    private readonly string _logDirectory;
 
-    public GenerationLogService(ILogger<GenerationLogService> logger, string logDirectory)
+    public GenerationLogService(ILogger<GenerationLogService> logger)
     {
         _logger = logger;
-        _logDirectory = logDirectory;
     }
 
-    public async Task LogAsync(GenerationRecord record, CancellationToken cancellationToken = default)
+    public Task LogAsync(GenerationRecord record, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
             "[Generation] RequestId={RequestId} Skill={SkillName} Prompt={PromptName} " +
@@ -28,29 +27,6 @@ public sealed class GenerationLogService : IGenerationLogService
             record.DurationMs,
             record.Success);
 
-        try
-        {
-            Directory.CreateDirectory(_logDirectory);
-
-            var fileName = $"{record.CreatedAt:yyyyMMdd_HHmmss}_{record.RequestId}.json";
-            var filePath = Path.Combine(_logDirectory, fileName);
-
-            var json = JsonSerializer.Serialize(record, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
-            await File.WriteAllTextAsync(filePath, json, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[Generation] 写入日志文件失败，跳过（不影响生成结果）");
-        }
+        return Task.CompletedTask;
     }
 }
-
-//主角第二天出门准备继续寻找妹妹的线索，正巧遇到了方晴，主角表达了感激后，和方晴寒暄了几句，便离开继续寻找妹妹的线索。
-
-//    主角遇到女警后表达了感谢。
-
-//    坚定-惊讶-愉快

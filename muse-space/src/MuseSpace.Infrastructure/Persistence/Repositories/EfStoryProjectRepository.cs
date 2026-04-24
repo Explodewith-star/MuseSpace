@@ -17,6 +17,12 @@ public sealed class EfStoryProjectRepository : IStoryProjectRepository
                     .OrderByDescending(p => p.CreatedAt)
                     .ToListAsync(cancellationToken);
 
+    public async Task<List<StoryProject>> GetByUserIdAsync(Guid? userId, CancellationToken cancellationToken = default)
+        => await _db.StoryProjects
+                    .Where(p => p.UserId == userId)
+                    .OrderByDescending(p => p.CreatedAt)
+                    .ToListAsync(cancellationToken);
+
     public async Task SaveAsync(StoryProject project, CancellationToken cancellationToken = default)
     {
         var entry = _db.Entry(project);

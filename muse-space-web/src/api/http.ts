@@ -15,6 +15,10 @@ const http: AxiosInstance = axios.create({
 // 请求拦截器
 http.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    const token = localStorage.getItem('musespace_token')
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`
+    }
     return config
   },
   (error) => Promise.reject(error),
@@ -36,13 +40,26 @@ http.interceptors.response.use(
   (error) => {
     const status = error.response?.status
     const silent = (error.config as ExtendedConfig)?.silent
+    if (status === 401) {
+      // token 无效或过期，清除会话并跳回登录页
+      localStorage.removeItem('musespace_token')
+      localStorage.removeItem('musespace_user')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+      return Promise.reject(error)
+    }
     if (!silent) {
+      const backendMsg: string | undefined = error.response?.data?.errorMessage
       const msgMap: Record<number, string> = {
         400: '请求参数错误',
+        401: '无权限或登录已过期，请重新登录',
+        403: '权限不足',
         404: '资源不存在',
+        409: '该文件已导入过，请勿重复上传',
         500: '服务器错误，请稍后重试',
       }
-      const msg = msgMap[status] ?? '网络异常，请检查连接'
+      const msg = backendMsg ?? msgMap[status] ?? '网络异常，请检查连接'
       import('@/composables/useToast').then(({ useToast }) => {
         useToast().error(msg)
       })

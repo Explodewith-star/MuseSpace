@@ -17,6 +17,7 @@ const navItems = computed(() => [
   { label: '世界观', icon: 'i-lucide-globe', to: `/projects/${projectId.value}/world-rules` },
   { label: '文风', icon: 'i-lucide-pen-line', to: `/projects/${projectId.value}/style-profile` },
   { label: '草稿生成', icon: 'i-lucide-sparkles', to: `/projects/${projectId.value}/draft` },
+  { label: '原著导入', icon: 'i-lucide-book-open', to: `/projects/${projectId.value}/novels` },
 ])
 </script>
 

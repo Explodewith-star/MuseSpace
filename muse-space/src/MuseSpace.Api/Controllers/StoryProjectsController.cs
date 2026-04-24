@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using MuseSpace.Application.Services.Story;
 using MuseSpace.Contracts.Common;
@@ -13,24 +14,24 @@ public class StoryProjectsController : ControllerBase
 
     public StoryProjectsController(StoryProjectAppService service)
         => _service = service;
-    /// <summary>
-    /// 创建小说项目
-    /// </summary>
-    /// <param name="request"></param>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
+
+    /// <summary>解析当前请求的 userId：有 JWT 则取其 NameIdentifier，无 JWT 则返回 null（游客）</summary>
+    private Guid? CurrentUserId =>
+        Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+
     [HttpPost]
     public async Task<ActionResult<ApiResponse<StoryProjectResponse>>> Create(
         [FromBody] CreateStoryProjectRequest request, CancellationToken cancellationToken)
     {
-        var result = await _service.CreateAsync(request, cancellationToken);
+        var result = await _service.CreateAsync(request, CurrentUserId, cancellationToken);
         return Ok(ApiResponse<StoryProjectResponse>.Ok(result));
     }
 
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<StoryProjectResponse>>>> GetAll(CancellationToken cancellationToken)
     {
-        var result = await _service.GetAllAsync(cancellationToken);
+        // 游客 null → 游客共享项目；登录用户 → 自己的私有项目
+        var result = await _service.GetByUserIdAsync(CurrentUserId, cancellationToken);
         return Ok(ApiResponse<List<StoryProjectResponse>>.Ok(result));
     }
 

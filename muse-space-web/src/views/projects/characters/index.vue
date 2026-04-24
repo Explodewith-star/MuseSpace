@@ -27,6 +27,9 @@ const {
   editLoading,
   openEdit,
   submitEdit,
+  extractQuery,
+  extractLoading,
+  extractFromNovel,
 } = initCharactersState()
 </script>
 
@@ -99,6 +102,30 @@ const {
     <!-- 添加角色抽屉 -->
     <AppDrawer v-model="drawerOpen" title="添加角色" width="520px">
       <div class="form-fields">
+        <!-- AI 从原著提取区块 -->
+        <div class="ai-extract-block">
+          <div class="ai-extract-label">
+            <i class="i-lucide-sparkles" />
+            从原著自动提取（需已完成导入）
+          </div>
+          <div class="ai-extract-row">
+            <AppInput
+              v-model="extractQuery"
+              placeholder="描述角色，如「主角」「石泓」「女主角」"
+              style="flex: 1"
+            />
+            <AppButton
+              size="sm"
+              :loading="extractLoading"
+              :disabled="!extractQuery.trim()"
+              @click="extractFromNovel"
+            >
+              提取
+            </AppButton>
+          </div>
+          <p class="ai-extract-hint">AI 将检索原著向量库并自动填写下方表单，你可以修改后保存</p>
+        </div>
+
         <div class="form-section-title">基本信息</div>
         <AppInput v-model="createForm.name" label="角色名称 *" placeholder="角色姓名" />
         <div class="form-row">
@@ -377,5 +404,36 @@ const {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
-</style>
 
+.ai-extract-block {
+  background: var(--color-surface-raised, rgba(124, 58, 237, 0.06));
+  border: 1px solid var(--color-accent-border, rgba(124, 58, 237, 0.2));
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-extract-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent, #7c3aed);
+}
+
+.ai-extract-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.ai-extract-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+</style>

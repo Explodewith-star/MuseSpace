@@ -14,4 +14,7 @@ public class StoryContext
     public string SceneGoal { get; init; } = string.Empty;
     public string? Conflict { get; init; }
     public string? EmotionCurve { get; init; }
+
+    /// <summary>原著相关切片，由向量检索注入，供 Prompt 使用</summary>
+    public List<string> NovelContextSnippets { get; init; } = [];
 }

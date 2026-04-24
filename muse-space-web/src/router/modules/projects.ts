@@ -47,6 +47,11 @@ const projectRoutes: RouteRecordRaw[] = [
         name: 'ProjectDraft',
         component: () => import('@/views/projects/draft/index.vue'),
       },
+      {
+        path: 'novels',
+        name: 'ProjectNovels',
+        component: () => import('@/views/projects/novels/index.vue'),
+      },
     ],
   },
 ]

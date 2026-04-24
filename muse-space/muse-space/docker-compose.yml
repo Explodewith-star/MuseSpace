@@ -20,6 +20,12 @@ services:
       - Llm__ModelName=${LLM_MODEL_NAME}
       - DeepSeek__ApiKey=${DEEPSEEK_API_KEY}
       - Embedding__ApiKey=${EMBEDDING_API_KEY}
+      # 认证与管理员（fail-fast：Auth__JwtSecret 未配置时后端拒绝启动）
+      - Auth__JwtSecret=${AUTH_JWT_SECRET}
+      - Auth__UserTokenExpiryDays=${AUTH_USER_TOKEN_EXPIRY_DAYS:-7}
+      - Auth__AdminTokenExpiryHours=${AUTH_ADMIN_TOKEN_EXPIRY_HOURS:-24}
+      - Admin__PhoneNumber=${ADMIN_PHONE_NUMBER}
+      - Admin__PasswordHash=${ADMIN_PASSWORD_HASH}
     volumes:
       - ./logs:/app/logs
       - musespace-data:/data # 原著文件等用户数据持久化

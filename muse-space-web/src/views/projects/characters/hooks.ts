@@ -1,6 +1,6 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCharacters, createCharacter, updateCharacter, deleteCharacter } from '@/api/characters'
+import { getCharacters, createCharacter, updateCharacter, deleteCharacter, extractCharacterFromNovel } from '@/api/characters'
 import { useToast } from '@/composables/useToast'
 import type { CharacterResponse } from '@/types/models'
 import type { CreateCharacterForm } from './types'
@@ -30,6 +30,34 @@ export function initCharactersState() {
   const drawerOpen = ref(false)
   const createLoading = ref(false)
   const createForm = reactive<CreateCharacterForm>(emptyForm())
+
+  // AI 提取
+  const extractQuery = ref('')
+  const extractLoading = ref(false)
+
+  async function extractFromNovel(): Promise<void> {
+    const q = extractQuery.value.trim()
+    if (!q) return
+    extractLoading.value = true
+    try {
+      const result = await extractCharacterFromNovel(projectId, q)
+      Object.assign(createForm, {
+        name: result.name ?? '',
+        age: result.age != null ? String(result.age) : '',
+        role: result.role ?? '',
+        personalitySummary: result.personalitySummary ?? '',
+        motivation: result.motivation ?? '',
+        speakingStyle: result.speakingStyle ?? '',
+        forbiddenBehaviors: result.forbiddenBehaviors ?? '',
+        currentState: result.currentState ?? '',
+      })
+      toast.success(`已从 ${result.sourceChunkCount} 个原著片段中提取，请检查并确认`)
+    } catch {
+      // handled by interceptor
+    } finally {
+      extractLoading.value = false
+    }
+  }
 
   const deleteTarget = ref<CharacterResponse | null>(null)
   const deleteLoading = ref(false)
@@ -164,5 +192,8 @@ export function initCharactersState() {
     editLoading,
     openEdit,
     submitEdit,
+    extractQuery,
+    extractLoading,
+    extractFromNovel,
   }
 }

@@ -89,6 +89,18 @@ export interface UpdateCharacterRequest {
   tags?: string
 }
 
+export interface ExtractCharacterResponse {
+  name: string
+  age?: number
+  role?: string
+  personalitySummary?: string
+  motivation?: string
+  speakingStyle?: string
+  forbiddenBehaviors?: string
+  currentState?: string
+  sourceChunkCount: number
+}
+
 // ---------- WorldRule ----------
 export interface WorldRuleResponse {
   id: string
@@ -178,4 +190,16 @@ export interface LlmProviderStatus {
   active: LlmProviderType
   currentModel: string
   availableModels: LlmModelOption[]
+}
+
+// ---------- Novel ----------
+export interface NovelResponse {
+  id: string
+  storyProjectId: string
+  title: string
+  fileName: string
+  fileSize: number
+  status: 'Pending' | 'Chunking' | 'Embedding' | 'Done' | 'Failed'
+  totalChunks: number
+  createdAt: string
 }
