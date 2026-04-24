@@ -35,6 +35,9 @@ RUN chown -R app:app /prompts
 # Log directory (writable by app user)
 RUN mkdir -p logs && chown app:app logs
 
+# Data directory (原著文件存储，named volume 挂载点，需提前建好并授权)
+RUN mkdir -p /data/files/raw && chown -R app:app /data
+
 USER app
 
 EXPOSE 8080

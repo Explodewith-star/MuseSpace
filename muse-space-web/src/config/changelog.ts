@@ -37,23 +37,23 @@ export interface Changelog {
 // ─────────────────────────────────────────────────────────────
 export const changelog: Changelog = {
   title: '功能更新',
-  subtitle: '草稿生成页 · AI 配置升级',
+  subtitle: 'AI 模型全局切换 · Agent 架构升级',
   items: [
     {
       type: 'new',
-      text: '草稿生成页新增 AI 渠道切换功能，支持在 OpenRouter 和 DeepSeek 之间一键切换',
+      text: '新增全局 AI 模型切换功能，在「个人设置」中选择渠道（OpenRouter / DeepSeek）和模型后，全站所有生成功能均使用你的偏好配置',
+    },
+    {
+      type: 'change',
+      text: '草稿生成页 AI 配置区域调整为只读展示，显示当前正在使用的渠道与模型，如需切换请前往「个人设置」',
     },
     {
       type: 'new',
-      text: 'OpenRouter 渠道现在可以选择具体模型，支持模糊搜索快速定位',
+      text: '后端引入 Agent 运行时架构，角色提取等 AI 功能迁移至 Agent 框架，具备完整的运行记录与可观测能力',
     },
     {
       type: 'tip',
-      text: '建议先使用免费模型（GLM-4.5 Air、GPT-OSS 等），速度快、零成本，适合快速出草稿',
-    },
-    {
-      type: 'tip',
-      text: '如果免费模型生成效果不稳定或质量不满意，切换到 DeepSeek 渠道 —— DeepSeek 是目前最稳定的选择，推荐用于正式创作',
+      text: '建议在「个人设置」中优先选择免费模型（GLM-4.5 Air、GPT-OSS 等）体验，如效果不理想再切换到 DeepSeek',
     },
   ],
 }
