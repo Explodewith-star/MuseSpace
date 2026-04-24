@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login, adminLogin, getMe } from '@/api/auth'
+import { login, adminLogin } from '@/api/auth'
 import type { LoginRequest, AdminLoginRequest, UserResponse } from '@/api/auth'
 
 const TOKEN_KEY = 'musespace_token'

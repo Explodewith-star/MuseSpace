@@ -115,11 +115,6 @@ function openDelete(novel: NovelResponse) {
   deleteDialogOpen.value = true
 }
 
-function cancelDelete() {
-  deleteDialogOpen.value = false
-  deleteTarget.value = null
-}
-
 async function confirmDelete() {
   if (!deleteTarget.value) return
   deleteLoading.value = true

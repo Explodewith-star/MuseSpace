@@ -18,11 +18,6 @@ async function fetchData() {
   }
 }
 
-function getUserPhone(userId?: string) {
-  if (!userId) return '游客共享'
-  return users.value.find(u => u.id === userId)?.phoneNumber ?? userId.slice(0, 8) + '...'
-}
-
 async function handleAssign(project: AdminProject, userId: string) {
   const targetId = userId === '' ? null : userId
   await assignProject(project.id, targetId)
