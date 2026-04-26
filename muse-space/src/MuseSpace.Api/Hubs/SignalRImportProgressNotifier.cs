@@ -14,19 +14,19 @@ public sealed class SignalRImportProgressNotifier : IImportProgressNotifier
     public SignalRImportProgressNotifier(IHubContext<NovelImportHub> hub)
         => _hub = hub;
 
-    public Task NotifyChunkingDoneAsync(Guid novelId, int totalChunks, CancellationToken ct = default)
+    public Task NotifyChunkingProgressAsync(Guid novelId, int done, int total, CancellationToken ct = default)
         => _hub.Clients.Group(novelId.ToString())
             .SendAsync("ChunkProgress",
-                new { novelId, stage = "chunking", done = totalChunks, total = totalChunks }, ct);
+                new { novelId, stage = "chunking", done, total }, ct);
 
     public Task NotifyEmbedProgressAsync(Guid novelId, int done, int total, CancellationToken ct = default)
         => _hub.Clients.Group(novelId.ToString())
             .SendAsync("EmbedProgress",
                 new { novelId, stage = "embedding", done, total }, ct);
 
-    public Task NotifyImportDoneAsync(Guid novelId, CancellationToken ct = default)
+    public Task NotifyImportDoneAsync(Guid novelId, int total, CancellationToken ct = default)
         => _hub.Clients.Group(novelId.ToString())
-            .SendAsync("ImportDone", new { novelId, status = "success" }, ct);
+            .SendAsync("ImportDone", new { novelId, stage = "indexed", done = total, total }, ct);
 
     public Task NotifyImportFailedAsync(Guid novelId, string error, CancellationToken ct = default)
         => _hub.Clients.Group(novelId.ToString())

@@ -199,7 +199,12 @@ export interface NovelResponse {
   title: string
   fileName: string
   fileSize: number
-  status: 'Pending' | 'Chunking' | 'Embedding' | 'Done' | 'Failed'
+  status: 'Pending' | 'Chunking' | 'Embedding' | 'Indexed' | 'Failed'
   totalChunks: number
+  progressDone: number
+  progressTotal: number
+  lastError?: string | null
+  startedAt?: string | null
+  finishedAt?: string | null
   createdAt: string
 }

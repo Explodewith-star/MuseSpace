@@ -14,6 +14,7 @@ packages/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+.tools/
 
 ## 构建输出 ##
 [Dd]ebug/

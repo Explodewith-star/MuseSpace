@@ -13,4 +13,7 @@ public interface IEmbeddingClient
 
     /// <summary>将文本转换为向量</summary>
     Task<float[]> EmbedAsync(string text, CancellationToken ct = default);
+
+    /// <summary>批量将文本转换为向量，返回结果顺序与输入顺序一致</summary>
+    Task<IReadOnlyList<float[]>> EmbedBatchAsync(IReadOnlyList<string> texts, CancellationToken ct = default);
 }

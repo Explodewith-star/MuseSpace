@@ -32,6 +32,17 @@ public sealed class EfNovelChunkRepository : INovelChunkRepository
                     .Where(c => c.Id == chunkId)
                     .ExecuteUpdateAsync(s => s.SetProperty(c => c.IsEmbedded, true), cancellationToken);
 
+    public async Task MarkEmbeddedBatchAsync(IEnumerable<Guid> chunkIds, CancellationToken cancellationToken = default)
+    {
+        var ids = chunkIds.Distinct().ToArray();
+        if (ids.Length == 0)
+            return;
+
+        await _db.NovelChunks
+            .Where(c => ids.Contains(c.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.IsEmbedded, true), cancellationToken);
+    }
+
     public async Task DeleteByNovelAsync(Guid novelId, CancellationToken cancellationToken = default)
         => await _db.NovelChunks.Where(c => c.NovelId == novelId).ExecuteDeleteAsync(cancellationToken);
 }

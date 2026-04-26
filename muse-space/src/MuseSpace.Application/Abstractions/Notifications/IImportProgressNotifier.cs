@@ -5,8 +5,8 @@ namespace MuseSpace.Application.Abstractions.Notifications;
 /// </summary>
 public interface IImportProgressNotifier
 {
-    Task NotifyChunkingDoneAsync(Guid novelId, int totalChunks, CancellationToken ct = default);
+    Task NotifyChunkingProgressAsync(Guid novelId, int done, int total, CancellationToken ct = default);
     Task NotifyEmbedProgressAsync(Guid novelId, int done, int total, CancellationToken ct = default);
-    Task NotifyImportDoneAsync(Guid novelId, CancellationToken ct = default);
+    Task NotifyImportDoneAsync(Guid novelId, int total, CancellationToken ct = default);
     Task NotifyImportFailedAsync(Guid novelId, string error, CancellationToken ct = default);
 }

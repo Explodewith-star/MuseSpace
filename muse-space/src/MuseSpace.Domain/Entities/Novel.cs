@@ -22,11 +22,26 @@ public class Novel
 
     public long? FileSize { get; set; }
 
-    /// <summary>处理状态：Pending → Processing → Indexed / Failed</summary>
+    /// <summary>处理状态：Pending → Chunking → Embedding → Indexed / Failed</summary>
     public NovelStatus Status { get; set; } = NovelStatus.Pending;
 
     /// <summary>已生成的切片总数</summary>
     public int TotalChunks { get; set; }
+
+    /// <summary>当前阶段已处理进度</summary>
+    public int ProgressDone { get; set; }
+
+    /// <summary>当前阶段总量</summary>
+    public int ProgressTotal { get; set; }
+
+    /// <summary>最近一次失败原因</summary>
+    public string? LastError { get; set; }
+
+    /// <summary>导入处理开始时间</summary>
+    public DateTime? StartedAt { get; set; }
+
+    /// <summary>导入处理结束时间</summary>
+    public DateTime? FinishedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -8,6 +8,7 @@ using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Domain.Enums;
 using MuseSpace.Infrastructure.Persistence;
 using MuseSpace.Infrastructure.Persistence.Entities;
+using System.Diagnostics;
 
 namespace MuseSpace.Infrastructure.Jobs;
 
@@ -17,7 +18,7 @@ namespace MuseSpace.Infrastructure.Jobs;
 /// </summary>
 public sealed class EmbedNovelJob
 {
-    private const int BatchSize = 20;
+    private const int BatchSize = 50;
 
     private readonly INovelRepository _novelRepo;
     private readonly INovelChunkRepository _chunkRepo;
@@ -56,9 +57,21 @@ public sealed class EmbedNovelJob
 
         try
         {
+            var stopwatch = Stopwatch.StartNew();
+            novel.Status = NovelStatus.Embedding;
+            novel.LastError = null;
+            novel.FinishedAt = null;
+            novel.UpdatedAt = DateTime.UtcNow;
+            await _novelRepo.UpdateAsync(novel);
+
             var chunks = await _chunkRepo.GetUnembeddedAsync(novelId);
             var total = chunks.Count;
             var done = 0;
+
+            novel.ProgressDone = 0;
+            novel.ProgressTotal = total;
+            novel.UpdatedAt = DateTime.UtcNow;
+            await _novelRepo.UpdateAsync(novel);
 
             _logger.LogInformation("EmbedNovelJob: {Total} chunks to embed for novel {NovelId}", total, novelId);
 
@@ -66,18 +79,14 @@ public sealed class EmbedNovelJob
             for (int i = 0; i < chunks.Count; i += BatchSize)
             {
                 var batch = chunks.Skip(i).Take(BatchSize).ToList();
+                var vectors = await _embeddingClient.EmbedBatchAsync(batch.Select(chunk => chunk.Content).ToList());
 
-                var embeddingTasks = batch.Select(async chunk =>
+                await using var transaction = await _db.Database.BeginTransactionAsync();
+
+                for (var batchIndex = 0; batchIndex < batch.Count; batchIndex++)
                 {
-                    var vector = await _embeddingClient.EmbedAsync(chunk.Content);
-                    return (chunk, vector);
-                });
-
-                var results = await Task.WhenAll(embeddingTasks);
-
-                // Write embeddings to DB
-                foreach (var (chunk, vector) in results)
-                {
+                    var chunk = batch[batchIndex];
+                    var vector = vectors[batchIndex];
                     var embedding = new NovelChunkEmbedding
                     {
                         Id = Guid.NewGuid(),
@@ -88,11 +97,17 @@ public sealed class EmbedNovelJob
                         CreatedAt = DateTime.UtcNow
                     };
                     _db.ChunkEmbeddings.Add(embedding);
-                    await _chunkRepo.MarkEmbeddedAsync(chunk.Id);
                 }
 
                 await _db.SaveChangesAsync();
+                await _chunkRepo.MarkEmbeddedBatchAsync(batch.Select(chunk => chunk.Id));
+                await transaction.CommitAsync();
                 done += batch.Count;
+
+                novel.ProgressDone = done;
+                novel.ProgressTotal = total;
+                novel.UpdatedAt = DateTime.UtcNow;
+                await _novelRepo.UpdateAsync(novel);
 
                 // Push progress via SignalR
                 await _notifier.NotifyEmbedProgressAsync(novelId, done, total);
@@ -103,17 +118,23 @@ public sealed class EmbedNovelJob
 
             // Mark novel as fully indexed
             novel.Status = NovelStatus.Indexed;
+            novel.ProgressDone = total;
+            novel.ProgressTotal = total;
+            novel.LastError = null;
+            novel.FinishedAt = DateTime.UtcNow;
             novel.UpdatedAt = DateTime.UtcNow;
             await _novelRepo.UpdateAsync(novel);
 
-            await _notifier.NotifyImportDoneAsync(novelId);
+            await _notifier.NotifyImportDoneAsync(novelId, total);
 
-            _logger.LogInformation("EmbedNovelJob completed for novel {NovelId}", novelId);
+            _logger.LogInformation("EmbedNovelJob completed for novel {NovelId} in {ElapsedMs} ms", novelId, stopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "EmbedNovelJob failed for novel {NovelId}", novelId);
             novel.Status = NovelStatus.Failed;
+            novel.LastError = ex.Message;
+            novel.FinishedAt = DateTime.UtcNow;
             novel.UpdatedAt = DateTime.UtcNow;
             await _novelRepo.UpdateAsync(novel);
             await _notifier.NotifyImportFailedAsync(novelId, ex.Message);

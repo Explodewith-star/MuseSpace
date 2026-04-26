@@ -18,6 +18,12 @@ public sealed class EfNovelRepository : INovelRepository
                     .OrderByDescending(n => n.CreatedAt)
                     .ToListAsync(cancellationToken);
 
+    public async Task<Novel?> GetByProjectAndHashAsync(Guid projectId, string fileHash, CancellationToken cancellationToken = default)
+        => await _db.Novels
+            .FirstOrDefaultAsync(
+                novel => novel.StoryProjectId == projectId && novel.FileHash == fileHash,
+                cancellationToken);
+
     public async Task AddAsync(Novel novel, CancellationToken cancellationToken = default)
     {
         _db.Novels.Add(novel);

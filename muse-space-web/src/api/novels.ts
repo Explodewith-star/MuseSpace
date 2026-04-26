@@ -1,6 +1,11 @@
 import request from './http'
 import type { NovelResponse } from '@/types/models'
 
+export interface NovelUploadProgress {
+  loaded: number
+  total?: number
+}
+
 export function getNovels(projectId: string): Promise<NovelResponse[]> {
   return request.get(`/projects/${projectId}/novels`)
 }
@@ -9,6 +14,7 @@ export function uploadNovel(
   projectId: string,
   file: File,
   title?: string,
+  onProgress?: (progress: NovelUploadProgress) => void,
 ): Promise<NovelResponse> {
   const form = new FormData()
   form.append('file', file)
@@ -17,6 +23,12 @@ export function uploadNovel(
     : `/projects/${projectId}/novels`
   return request.post(url, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      onProgress?.({
+        loaded: event.loaded,
+        total: event.total ?? undefined,
+      })
+    },
   })
 }
 

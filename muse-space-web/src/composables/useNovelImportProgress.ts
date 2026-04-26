@@ -1,20 +1,27 @@
 import { ref, onUnmounted } from 'vue'
 import * as signalR from '@microsoft/signalr'
 
+export type NovelImportStage = 'chunking' | 'embedding' | 'indexed'
+
 export interface ChunkProgressPayload {
   novelId: string
-  totalChunks: number
+  stage: 'chunking'
+  done: number
+  total: number
 }
 
 export interface EmbedProgressPayload {
   novelId: string
-  embedded: number
+  stage: 'embedding'
+  done: number
   total: number
 }
 
 export interface ImportDonePayload {
   novelId: string
-  totalChunks: number
+  stage: 'indexed'
+  done: number
+  total: number
 }
 
 export interface ImportFailedPayload {
@@ -22,12 +29,18 @@ export interface ImportFailedPayload {
   error: string
 }
 
-export function useNovelImportProgress(novelId: string) {
+export interface ImportProgressPayload {
+  novelId: string
+  stage: NovelImportStage
+  done: number
+  total: number
+}
+
+export function useNovelImportProgress() {
   const isConnected = ref(false)
-  const chunkProgress = ref<ChunkProgressPayload | null>(null)
-  const embedProgress = ref<EmbedProgressPayload | null>(null)
-  const importDone = ref<ImportDonePayload | null>(null)
+  const progressEvent = ref<ImportProgressPayload | null>(null)
   const importFailed = ref<ImportFailedPayload | null>(null)
+  const joinedNovelIds = new Set<string>()
 
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(`${import.meta.env.VITE_APP_HUB_BASE ?? ''}/hubs/novel-import`)
@@ -35,15 +48,24 @@ export function useNovelImportProgress(novelId: string) {
     .build()
 
   connection.on('ChunkProgress', (payload: ChunkProgressPayload) => {
-    chunkProgress.value = payload
+    progressEvent.value = payload
   })
 
   connection.on('EmbedProgress', (payload: EmbedProgressPayload) => {
-    embedProgress.value = payload
+    progressEvent.value = payload
   })
 
   connection.on('ImportDone', (payload: ImportDonePayload) => {
-    importDone.value = payload
+    progressEvent.value = {
+      novelId: payload.novelId,
+      stage: 'indexed',
+      done: payload.done,
+      total: payload.total,
+    }
+  })
+
+  connection.onreconnected(async () => {
+    await Promise.all(Array.from(joinedNovelIds).map((novelId) => connection.invoke('JoinNovelGroup', novelId)))
   })
 
   connection.on('ImportFailed', (payload: ImportFailedPayload) => {
@@ -51,18 +73,41 @@ export function useNovelImportProgress(novelId: string) {
   })
 
   async function start() {
+    if (isConnected.value) return
+
     try {
       await connection.start()
       isConnected.value = true
-      await connection.invoke('JoinNovelGroup', novelId)
     } catch (err) {
       console.error('[SignalR] connection failed:', err)
     }
   }
 
-  async function stop() {
+  async function joinNovel(novelId: string) {
+    if (!isConnected.value)
+      await start()
+
+    if (!isConnected.value || joinedNovelIds.has(novelId))
+      return
+
+    await connection.invoke('JoinNovelGroup', novelId)
+    joinedNovelIds.add(novelId)
+  }
+
+  async function leaveNovel(novelId: string) {
+    if (!isConnected.value || !joinedNovelIds.has(novelId))
+      return
+
     try {
       await connection.invoke('LeaveNovelGroup', novelId)
+    } finally {
+      joinedNovelIds.delete(novelId)
+    }
+  }
+
+  async function stop() {
+    try {
+      await Promise.all(Array.from(joinedNovelIds).map((novelId) => leaveNovel(novelId)))
       await connection.stop()
     } catch {
       // ignore
@@ -74,11 +119,11 @@ export function useNovelImportProgress(novelId: string) {
 
   return {
     isConnected,
-    chunkProgress,
-    embedProgress,
-    importDone,
+    progressEvent,
     importFailed,
     start,
     stop,
+    joinNovel,
+    leaveNovel,
   }
 }

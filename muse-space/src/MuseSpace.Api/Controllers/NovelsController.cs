@@ -59,47 +59,49 @@ public sealed class NovelsController : ControllerBase
             return BadRequest(new { message = "Only .txt and .md files are supported." });
 
         // Read bytes and compute SHA-256 for deduplication
-        byte[] fileBytes;
         await using (var ms = new MemoryStream())
         {
             await file.CopyToAsync(ms, ct);
-            fileBytes = ms.ToArray();
+            var buffer = ms.GetBuffer().AsSpan(0, checked((int)ms.Length));
+            var hash = Convert.ToHexString(SHA256.HashData(buffer)).ToLowerInvariant();
+
+            var existing = await _novelRepo.GetByProjectAndHashAsync(projectId, hash, ct);
+            if (existing is not null)
+                return Conflict(ApiResponse<NovelResponse>.Fail("This file has already been imported for this project."));
+
+            var novelId = Guid.NewGuid();
+            var fileKey = $"raw/{novelId}{ext}";
+
+            ms.Position = 0;
+            await _storage.SaveAsync(fileKey, ms, ct);
+
+            // Create novel record
+            var novel = new Novel
+            {
+                Id = novelId,
+                StoryProjectId = projectId,
+                Title = title ?? Path.GetFileNameWithoutExtension(file.FileName),
+                FileName = file.FileName,
+                FileKey = fileKey,
+                FileHash = hash,
+                FileSize = file.Length,
+                Status = NovelStatus.Pending,
+                ProgressDone = 0,
+                ProgressTotal = 0,
+                LastError = null,
+                StartedAt = null,
+                FinishedAt = null,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            await _novelRepo.AddAsync(novel, ct);
+
+            // Enqueue Hangfire job chain: Chunking → Embedding
+            var jobId = BackgroundJob.Enqueue<ChunkNovelJob>(j => j.ExecuteAsync(novelId, null));
+            BackgroundJob.ContinueJobWith<EmbedNovelJob>(jobId, j => j.ExecuteAsync(novelId, null));
+
+            return Ok(ApiResponse<NovelResponse>.Ok(ToResponse(novel)));
         }
-
-        var hash = Convert.ToHexString(SHA256.HashData(fileBytes)).ToLowerInvariant();
-
-        // Check for duplicate within the same project
-        var existing = await _novelRepo.GetByProjectAsync(projectId, ct);
-        if (existing.Any(n => n.FileHash == hash))
-            return Conflict(ApiResponse<NovelResponse>.Fail("This file has already been imported for this project."));
-
-        var novelId = Guid.NewGuid();
-        var fileKey = $"raw/{novelId}{ext}";
-
-        // Persist file
-        await _storage.SaveAsync(fileKey, new MemoryStream(fileBytes), ct);
-
-        // Create novel record
-        var novel = new Novel
-        {
-            Id = novelId,
-            StoryProjectId = projectId,
-            Title = title ?? Path.GetFileNameWithoutExtension(file.FileName),
-            FileName = file.FileName,
-            FileKey = fileKey,
-            FileHash = hash,
-            FileSize = file.Length,
-            Status = NovelStatus.Pending,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        await _novelRepo.AddAsync(novel, ct);
-
-        // Enqueue Hangfire job chain: Chunking → Embedding
-        var jobId = BackgroundJob.Enqueue<ChunkNovelJob>(j => j.ExecuteAsync(novelId, null));
-        BackgroundJob.ContinueJobWith<EmbedNovelJob>(jobId, j => j.ExecuteAsync(novelId, null));
-
-        return Ok(ApiResponse<NovelResponse>.Ok(ToResponse(novel)));
     }
 
     /// <summary>查询单个小说的导入状态（轮询 fallback）</summary>
@@ -141,6 +143,11 @@ public sealed class NovelsController : ControllerBase
         FileSize = n.FileSize,
         Status = n.Status.ToString(),
         TotalChunks = n.TotalChunks,
+        ProgressDone = n.ProgressDone,
+        ProgressTotal = n.ProgressTotal,
+        LastError = n.LastError,
+        StartedAt = n.StartedAt,
+        FinishedAt = n.FinishedAt,
         CreatedAt = n.CreatedAt
     };
 }

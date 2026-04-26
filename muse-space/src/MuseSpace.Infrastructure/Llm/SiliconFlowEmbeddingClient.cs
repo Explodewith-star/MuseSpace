@@ -31,8 +31,14 @@ public sealed class SiliconFlowEmbeddingClient : IEmbeddingClient
     }
 
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+        => (await EmbedBatchAsync([text], ct)).Single();
+
+    public async Task<IReadOnlyList<float[]>> EmbedBatchAsync(IReadOnlyList<string> texts, CancellationToken ct = default)
     {
-        var request = new EmbeddingRequest { Model = _options.ModelName, Input = text };
+        if (texts.Count == 0)
+            return [];
+
+        var request = new EmbeddingRequest { Model = _options.ModelName, Input = texts.Count == 1 ? texts[0] : texts };
 
         HttpResponseMessage response;
         try
@@ -54,18 +60,23 @@ public sealed class SiliconFlowEmbeddingClient : IEmbeddingClient
         }
 
         var result = await response.Content.ReadFromJsonAsync<EmbeddingResponse>(cancellationToken: ct);
-        var embedding = result?.Data?.FirstOrDefault()?.Embedding;
+        var embeddings = result?.Data?
+            .OrderBy(item => item.Index)
+            .Select(item => item.Embedding)
+            .Where(embedding => embedding is not null && embedding.Length > 0)
+            .Cast<float[]>()
+            .ToList();
 
-        if (embedding is null || embedding.Length == 0)
+        if (embeddings is null || embeddings.Count != texts.Count)
             throw new InvalidOperationException("SiliconFlow returned empty embedding data.");
 
-        return embedding;
+        return embeddings;
     }
 
     private sealed class EmbeddingRequest
     {
         [JsonPropertyName("model")] public string Model { get; init; } = string.Empty;
-        [JsonPropertyName("input")] public string Input { get; init; } = string.Empty;
+        [JsonPropertyName("input")] public object Input { get; init; } = string.Empty;
     }
 
     private sealed class EmbeddingResponse
@@ -75,6 +86,7 @@ public sealed class SiliconFlowEmbeddingClient : IEmbeddingClient
 
     private sealed class EmbeddingData
     {
+        [JsonPropertyName("index")] public int Index { get; init; }
         [JsonPropertyName("embedding")] public float[]? Embedding { get; init; }
     }
 }

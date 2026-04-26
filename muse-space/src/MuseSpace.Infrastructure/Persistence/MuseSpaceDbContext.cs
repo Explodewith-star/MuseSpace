@@ -143,6 +143,7 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.FileName).HasMaxLength(500);
             entity.Property(e => e.FileKey).HasMaxLength(1000);
             entity.Property(e => e.FileHash).HasMaxLength(64);
+            entity.Property(e => e.LastError).HasColumnType("text");
             entity.Property(e => e.Status).HasConversion<int>();
             entity.HasIndex(e => e.StoryProjectId);
             // 同一项目内同一文件 hash 不允许重复导入
