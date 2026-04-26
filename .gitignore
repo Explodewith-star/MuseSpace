@@ -41,3 +41,4 @@ npm-debug.log*
 # 本地配置
 *.local
 *.user
+/muse-space/data/files/raw
