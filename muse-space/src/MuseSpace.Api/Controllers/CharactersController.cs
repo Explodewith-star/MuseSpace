@@ -4,8 +4,10 @@ using MuseSpace.Application.Abstractions.Llm;
 using MuseSpace.Application.Abstractions.Memory;
 using MuseSpace.Application.Services.Agents;
 using MuseSpace.Application.Services.Story;
+using MuseSpace.Application.Services.Suggestions;
 using MuseSpace.Contracts.Characters;
 using MuseSpace.Contracts.Common;
+using MuseSpace.Contracts.Suggestions;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -18,15 +20,18 @@ public class CharactersController : ControllerBase
     private readonly CharacterAppService _service;
     private readonly INovelMemorySearchService _novelSearch;
     private readonly IAgentRunner _agentRunner;
+    private readonly AgentSuggestionAppService _suggestionService;
 
     public CharactersController(
         CharacterAppService service,
         INovelMemorySearchService novelSearch,
-        IAgentRunner agentRunner)
+        IAgentRunner agentRunner,
+        AgentSuggestionAppService suggestionService)
     {
         _service = service;
         _novelSearch = novelSearch;
         _agentRunner = agentRunner;
+        _suggestionService = suggestionService;
     }
 
     /// <summary>
@@ -146,6 +151,15 @@ public class CharactersController : ControllerBase
         {
             return StatusCode(502, ApiResponse<ExtractCharacterResponse>.Fail("AI 返回格式异常，请重试"));
         }
+
+        // 4. 将提取结果写入统一建议表，供用户审核后再正式应用
+        await _suggestionService.CreateAsync(
+            agentRunId: agentContext.RunId,
+            storyProjectId: projectId,
+            category: SuggestionCategories.Character,
+            title: $"候选角色：{extracted.Name}",
+            contentJson: json,
+            cancellationToken: cancellationToken);
 
         return Ok(ApiResponse<ExtractCharacterResponse>.Ok(extracted));
     }

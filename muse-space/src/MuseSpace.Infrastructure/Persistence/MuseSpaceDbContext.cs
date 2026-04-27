@@ -24,6 +24,9 @@ public class MuseSpaceDbContext : DbContext
     // ── Agent 运行记录 ──────────────────────────────────────────────────────────
     public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
 
+    // ── Agent 建议审核 ──────────────────────────────────────────────────────────
+    public DbSet<AgentSuggestion> AgentSuggestions => Set<AgentSuggestion>();
+
     // ── public schema：原著导入 ───────────────────────────────────────────────
     public DbSet<Novel> Novels => Set<Novel>();
     public DbSet<NovelChunk> NovelChunks => Set<NovelChunk>();
@@ -214,6 +217,20 @@ public class MuseSpaceDbContext : DbContext
             entity.HasIndex(e => e.AgentName);
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.StartedAt);
+        });
+
+        // ── AgentSuggestion ───────────────────────────────────────────────────
+        modelBuilder.Entity<AgentSuggestion>(entity =>
+        {
+            entity.ToTable("agent_suggestions");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Category).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Title).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.ContentJson).HasColumnType("text").IsRequired();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.HasIndex(e => e.AgentRunId);
+            entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => new { e.StoryProjectId, e.Status });
         });
     }
 }

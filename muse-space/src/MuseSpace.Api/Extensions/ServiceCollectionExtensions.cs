@@ -11,6 +11,7 @@ using MuseSpace.Application.Abstractions.Notifications;
 using MuseSpace.Application.Abstractions.Prompt;
 using MuseSpace.Application.Abstractions.Skills;
 using MuseSpace.Application.Abstractions.Storage;
+using MuseSpace.Application.Abstractions.Suggestions;
 using MuseSpace.Application.Services;
 using MuseSpace.Application.Services.Agents;
 using MuseSpace.Application.Services.Drafting;
@@ -116,9 +117,18 @@ public static class ServiceCollectionExtensions
         // ── Agent 运行时 ─────────────────────────────────────────────────────
         // Agent 定义注册（新增 Agent 只需追加一行）
         services.AddSingleton(CharacterExtractAgentDefinition.Create());
+        services.AddSingleton(ConsistencyCheckAgentDefinition.Create());
         // Agent 工具注册（P0 暂无工具，P1 扩展时通过 Scrutor 或手动注册 IAgentTool）
         // AgentRunner（Scoped：依赖 DbContext + ILlmClient 都是 Scoped）
         services.AddScoped<IAgentRunner, AgentRunner>();
+
+        // ── Agent 建议审核层 ─────────────────────────────────────────────────
+        // ISuggestionApplier 实现按接口注册（新增 Applier 只需追加实现类）
+        services.Scan(scan => scan
+            .FromAssemblyOf<SceneDraftSkill>()
+            .AddClasses(c => c.AssignableTo<ISuggestionApplier>())
+                .AsImplementedInterfaces()
+                .WithScopedLifetime());
 
         // Scrutor：扫描 Application 程序集
         // - ISkill 实现 → 按接口注册（支持多个 Skill 同时注入到 SkillOrchestrator）

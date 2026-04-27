@@ -12,12 +12,36 @@ const http: AxiosInstance = axios.create({
   },
 })
 
+// 清除本地登录会话并跳转登录页
+function clearSessionAndRedirect() {
+  localStorage.removeItem('musespace_token')
+  localStorage.removeItem('musespace_user')
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}
+
+// 判断 JWT token 是否仍在有效期内（纯本地解码，不发请求）
+function isTokenAlive(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return typeof payload.exp === 'number' && payload.exp * 1000 > Date.now()
+  } catch {
+    return false
+  }
+}
+
 // 请求拦截器
 http.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('musespace_token')
     if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`
+      if (isTokenAlive(token)) {
+        config.headers['Authorization'] = `Bearer ${token}`
+      } else {
+        // token 已过期：清除本地会话并跳转登录，避免后端静默降级为游客
+        clearSessionAndRedirect()
+      }
     }
     return config
   },
@@ -41,12 +65,7 @@ http.interceptors.response.use(
     const status = error.response?.status
     const silent = (error.config as ExtendedConfig)?.silent
     if (status === 401) {
-      // token 无效或过期，清除会话并跳回登录页
-      localStorage.removeItem('musespace_token')
-      localStorage.removeItem('musespace_user')
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login'
-      }
+      clearSessionAndRedirect()
       return Promise.reject(error)
     }
     if (!silent) {
