@@ -10,6 +10,11 @@ import { getNovels, uploadNovel, deleteNovel, getNovelStatus } from '@/api/novel
 import { useNovelImportProgress } from '@/composables/useNovelImportProgress'
 import type { NovelResponse } from '@/types/models'
 
+// crypto.randomUUID() 在 HTTP（非安全上下文）下不可用，用兼容方案
+function generateId(): string {
+  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+}
+
 type ImportTaskStatus = 'uploading' | 'pending' | 'chunking' | 'embedding' | 'done' | 'failed'
 
 interface ActiveImportTask {
@@ -68,7 +73,7 @@ const importPollingTimers = new Map<string, ReturnType<typeof setInterval>>()
 
 function createImportTask(file: File): ActiveImportTask {
   return {
-    localId: crypto.randomUUID(),
+    localId: generateId(),
     title: file.name.replace(/\.[^.]+$/, '') || file.name,
     fileName: file.name,
     fileSize: file.size,
@@ -108,7 +113,7 @@ function ensureImportTaskForNovel(novel: NovelResponse) {
   }
 
   const task: ActiveImportTask = {
-    localId: crypto.randomUUID(),
+    localId: generateId(),
     novelId: novel.id,
     title: novel.title,
     fileName: novel.fileName,

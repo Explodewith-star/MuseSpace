@@ -28,7 +28,7 @@ public class DraftController : ControllerBase
 
     [HttpPost("scene")]
     public async Task<ActionResult<ApiResponse<GenerateSceneDraftResponse>>> GenerateSceneDraft(
-        [FromBody] GenerateSceneDraftRequest request, 
+        [FromBody] GenerateSceneDraftRequest request,
         CancellationToken cancellationToken)
     {
         var result = await _sceneDraftService.ExecuteAsync(request, cancellationToken);
