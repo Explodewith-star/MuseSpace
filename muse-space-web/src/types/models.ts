@@ -208,3 +208,73 @@ export interface NovelResponse {
   finishedAt?: string | null
   createdAt: string
 }
+
+// ---------- AgentSuggestion ----------
+export type SuggestionStatus = 'Pending' | 'Accepted' | 'Applied' | 'Ignored'
+
+export interface AgentSuggestionResponse {
+  id: string
+  agentRunId: string
+  storyProjectId: string
+  category: string
+  title: string
+  contentJson: string
+  status: SuggestionStatus
+  targetEntityId?: string
+  createdAt: string
+  resolvedAt?: string
+}
+
+/** ConsistencyCheckJob 写入的 ContentJson 结构 */
+export interface ConsistencyContentJson {
+  ruleName?: string
+  severity?: 'high' | 'medium' | 'low'
+  conflictSnippet?: string
+  explanation?: string
+  suggestion?: string
+}
+
+/** CharacterConsistencyCheckJob 写入的 ContentJson 结构 */
+export interface CharacterConflictContentJson {
+  characterName?: string
+  conflictType?: string
+  severity?: 'high' | 'medium' | 'low'
+  conflictSnippet?: string
+  explanation?: string
+  suggestion?: string
+}
+
+export interface ConsistencyCheckRequest {
+  draftText: string
+}
+
+export interface BatchResolveSuggestionsRequest {
+  ids: string[]
+  action: 'Accept' | 'Ignore'
+}
+
+// ---------- Outline Plan ----------
+export interface OutlinePlanRequest {
+  goal: string
+  chapterCount: number
+  mode: 'new' | 'continue'
+}
+
+/** 大纲建议 ContentJson 中的单章结构 */
+export interface OutlineChapterItem {
+  number: number
+  title: string
+  goal: string
+  summary: string
+}
+
+export interface ImportOutlineRequest {
+  chapters: ImportOutlineChapter[]
+}
+
+export interface ImportOutlineChapter {
+  number: number
+  title: string
+  goal?: string
+  summary?: string
+}

@@ -52,6 +52,16 @@ const projectRoutes: RouteRecordRaw[] = [
         name: 'ProjectNovels',
         component: () => import('@/views/projects/novels/index.vue'),
       },
+      {
+        path: 'suggestions',
+        name: 'ProjectSuggestions',
+        component: () => import('@/views/projects/suggestions/index.vue'),
+      },
+      {
+        path: 'suggestions/outline/:suggestionId',
+        name: 'OutlineDetail',
+        component: () => import('@/views/projects/suggestions/OutlineDetail.vue'),
+      },
     ],
   },
 ]

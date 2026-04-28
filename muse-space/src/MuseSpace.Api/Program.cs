@@ -104,6 +104,7 @@ try
     app.UseMiddleware<LlmPreferenceMiddleware>();
     app.MapControllers();
     app.MapHub<NovelImportHub>("/hubs/novel-import");
+    app.MapHub<AgentProgressHub>("/hubs/agent-progress");
 
     app.Run();
 }

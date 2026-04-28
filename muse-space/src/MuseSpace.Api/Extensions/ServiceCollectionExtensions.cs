@@ -111,6 +111,9 @@ public static class ServiceCollectionExtensions
         // ── Import progress notifier (SignalR-backed) ────────────────────────────
         services.AddScoped<IImportProgressNotifier, SignalRImportProgressNotifier>();
 
+        // ── Agent progress notifier (SignalR-backed) ─────────────────────────────
+        services.AddScoped<IAgentProgressNotifier, SignalRAgentProgressNotifier>();
+
         // 生成日志（不再写入 JSON 文件，仅 Serilog 结构化日志）
         services.AddSingleton<IGenerationLogService, GenerationLogService>();
 
@@ -118,6 +121,8 @@ public static class ServiceCollectionExtensions
         // Agent 定义注册（新增 Agent 只需追加一行）
         services.AddSingleton(CharacterExtractAgentDefinition.Create());
         services.AddSingleton(ConsistencyCheckAgentDefinition.Create());
+        services.AddSingleton(CharacterConsistencyAgentDefinition.Create());
+        services.AddSingleton(OutlinePlanAgentDefinition.Create());
         // Agent 工具注册（P0 暂无工具，P1 扩展时通过 Scrutor 或手动注册 IAgentTool）
         // AgentRunner（Scoped：依赖 DbContext + ILlmClient 都是 Scoped）
         services.AddScoped<IAgentRunner, AgentRunner>();

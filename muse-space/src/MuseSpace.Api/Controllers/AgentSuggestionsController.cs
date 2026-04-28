@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using Hangfire;
 using Microsoft.AspNetCore.Mvc;
+using MuseSpace.Application.Services.Story;
 using MuseSpace.Application.Services.Suggestions;
+using MuseSpace.Contracts.Chapters;
 using MuseSpace.Contracts.Common;
 using MuseSpace.Contracts.Suggestions;
 using MuseSpace.Domain.Enums;
@@ -14,11 +16,16 @@ namespace MuseSpace.Api.Controllers;
 public class AgentSuggestionsController : ControllerBase
 {
     private readonly AgentSuggestionAppService _service;
+    private readonly ChapterAppService _chapterService;
     private readonly IBackgroundJobClient _backgroundJobs;
 
-    public AgentSuggestionsController(AgentSuggestionAppService service, IBackgroundJobClient backgroundJobs)
+    public AgentSuggestionsController(
+        AgentSuggestionAppService service,
+        ChapterAppService chapterService,
+        IBackgroundJobClient backgroundJobs)
     {
         _service = service;
+        _chapterService = chapterService;
         _backgroundJobs = backgroundJobs;
     }
 
@@ -112,5 +119,63 @@ public class AgentSuggestionsController : ControllerBase
             job => job.ExecuteAsync(projectId, request.DraftText, CurrentUserId));
 
         return Ok(ApiResponse<string>.Ok("一致性检查已提交，结果将异步写入建议列表"));
+    }
+
+    /// <summary>手动触发角色一致性检查（异步，结果写入建议表）。</summary>
+    [HttpPost("character-consistency-check")]
+    public ActionResult<ApiResponse<string>> TriggerCharacterConsistencyCheck(
+        Guid projectId, [FromBody] ConsistencyCheckRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.DraftText))
+            return BadRequest(ApiResponse<string>.Fail("草稿文本不能为空"));
+
+        _backgroundJobs.Enqueue<CharacterConsistencyCheckJob>(
+            job => job.ExecuteAsync(projectId, request.DraftText, CurrentUserId));
+
+        return Ok(ApiResponse<string>.Ok("角色一致性检查已提交，结果将异步写入建议列表"));
+    }
+
+    /// <summary>触发大纲规划（异步，结果写入建议表）。</summary>
+    [HttpPost("outline-plan")]
+    public ActionResult<ApiResponse<string>> TriggerOutlinePlan(
+        Guid projectId, [FromBody] OutlinePlanRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Goal))
+            return BadRequest(ApiResponse<string>.Fail("故事目标不能为空"));
+
+        if (request.ChapterCount is < 1 or > 100)
+            return BadRequest(ApiResponse<string>.Fail("章节数量需在 1-100 之间"));
+
+        var mode = request.Mode is "new" or "continue" ? request.Mode : "new";
+
+        _backgroundJobs.Enqueue<OutlinePlanJob>(
+            job => job.ExecuteAsync(projectId, request.Goal, request.ChapterCount, mode, CurrentUserId));
+
+        return Ok(ApiResponse<string>.Ok("大纲规划已提交，结果将异步写入建议列表"));
+    }
+
+    /// <summary>导入大纲到章节（用户审核编辑后提交）。</summary>
+    [HttpPost("outline-import")]
+    public async Task<ActionResult<ApiResponse<int>>> ImportOutline(
+        Guid projectId, [FromBody] ImportOutlineRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Chapters.Count == 0)
+            return BadRequest(ApiResponse<int>.Fail("章节列表不能为空"));
+
+        var count = 0;
+        foreach (var ch in request.Chapters)
+        {
+            await _chapterService.CreateAsync(projectId, new CreateChapterRequest
+            {
+                Number = ch.Number,
+                Title = ch.Title,
+                Summary = ch.Summary,
+                Goal = ch.Goal,
+            }, cancellationToken);
+            count++;
+        }
+
+        return Ok(ApiResponse<int>.Ok(count));
     }
 }
