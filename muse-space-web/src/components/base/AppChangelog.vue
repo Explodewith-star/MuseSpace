@@ -93,6 +93,7 @@ const groupedItems = computed(() => {
 .cl-dialog {
   width: 100%;
   max-width: 480px;
+  max-height: calc(100vh - 40px);
   background-color: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: 16px;
@@ -145,6 +146,9 @@ const groupedItems = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .cl-item {
