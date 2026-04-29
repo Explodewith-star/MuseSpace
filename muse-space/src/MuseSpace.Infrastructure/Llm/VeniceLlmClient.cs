@@ -7,21 +7,22 @@ using MuseSpace.Infrastructure.Llm.Models;
 namespace MuseSpace.Infrastructure.Llm;
 
 /// <summary>
-/// 通过 OpenRouter API 调用 LLM 的真实实现。
-/// 替代 Phase 1 的 LocalModelClient stub。
+/// 通过 Venice AI API 调用 LLM（OpenAI 兼容接口）。
+/// 支持多模型切换，当前选中模型从 <see cref="LlmProviderSelector"/> 读取。
+/// 仅限管理员使用。
 /// </summary>
-public sealed class OpenRouterLlmClient : ILlmClient
+public sealed class VeniceLlmClient
 {
     private readonly HttpClient _httpClient;
-    private readonly LlmOptions _options;
+    private readonly VeniceOptions _options;
     private readonly LlmProviderSelector _selector;
-    private readonly ILogger<OpenRouterLlmClient> _logger;
+    private readonly ILogger<VeniceLlmClient> _logger;
 
-    public OpenRouterLlmClient(
+    public VeniceLlmClient(
         HttpClient httpClient,
-        IOptions<LlmOptions> options,
+        IOptions<VeniceOptions> options,
         LlmProviderSelector selector,
-        ILogger<OpenRouterLlmClient> logger)
+        ILogger<VeniceLlmClient> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
@@ -34,7 +35,6 @@ public sealed class OpenRouterLlmClient : ILlmClient
         string userPrompt,
         CancellationToken cancellationToken = default)
     {
-        // 运行时切换的模型优先，否则用配置文件默认值
         var modelName = _selector.ActiveModel ?? _options.ModelName;
         var request = new ChatCompletionRequest
         {
@@ -46,7 +46,7 @@ public sealed class OpenRouterLlmClient : ILlmClient
             ]
         };
 
-        _logger.LogInformation("Calling OpenRouter model {Model}...", modelName);
+        _logger.LogInformation("Calling Venice model {Model}...", modelName);
 
         HttpResponseMessage response;
         try
@@ -62,28 +62,28 @@ public sealed class OpenRouterLlmClient : ILlmClient
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "HTTP request to OpenRouter failed");
-            throw new InvalidOperationException("Failed to call OpenRouter API.", ex);
+            _logger.LogError(ex, "HTTP request to Venice failed");
+            throw new InvalidOperationException("Failed to call Venice API.", ex);
         }
 
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("OpenRouter returned {StatusCode}: {Body}",
+            _logger.LogError("Venice returned {StatusCode}: {Body}",
                 (int)response.StatusCode, errorBody);
             throw new InvalidOperationException(
-                $"OpenRouter API returned HTTP {(int)response.StatusCode}: {errorBody}");
+                $"Venice API returned HTTP {(int)response.StatusCode}: {errorBody}");
         }
 
         var content = await SseStreamReader.ReadAsync(response, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(content))
         {
-            _logger.LogWarning("OpenRouter returned empty content");
+            _logger.LogWarning("Venice returned empty content");
             return string.Empty;
         }
 
-        _logger.LogInformation("OpenRouter returned {Length} chars", content.Length);
+        _logger.LogInformation("Venice returned {Length} chars", content.Length);
         return content;
     }
 }

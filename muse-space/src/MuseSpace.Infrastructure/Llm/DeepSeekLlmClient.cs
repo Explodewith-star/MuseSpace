@@ -45,9 +45,13 @@ public sealed class DeepSeekLlmClient
         HttpResponseMessage response;
         try
         {
-            response = await _httpClient.PostAsJsonAsync(
-                "chat/completions",
-                request,
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+            {
+                Content = JsonContent.Create(request)
+            };
+            response = await _httpClient.SendAsync(
+                httpRequest,
+                HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
         }
         catch (Exception ex)
@@ -65,10 +69,7 @@ public sealed class DeepSeekLlmClient
                 $"DeepSeek API returned HTTP {(int)response.StatusCode}: {errorBody}");
         }
 
-        var completion = await response.Content.ReadFromJsonAsync<ChatCompletionResponse>(
-            cancellationToken: cancellationToken);
-
-        var content = completion?.Choices?.FirstOrDefault()?.Message?.Content;
+        var content = await SseStreamReader.ReadAsync(response, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(content))
         {

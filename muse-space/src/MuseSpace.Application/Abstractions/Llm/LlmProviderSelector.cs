@@ -4,6 +4,7 @@ public enum LlmProviderType
 {
     OpenRouter,
     DeepSeek,
+    Venice,
 }
 
 /// <summary>

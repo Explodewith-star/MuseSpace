@@ -192,7 +192,7 @@ export interface ChatResponse {
 }
 
 // ---------- LLM Provider ----------
-export type LlmProviderType = 'OpenRouter' | 'DeepSeek'
+export type LlmProviderType = 'OpenRouter' | 'DeepSeek' | 'Venice'
 
 export interface LlmModelOption {
   id: string

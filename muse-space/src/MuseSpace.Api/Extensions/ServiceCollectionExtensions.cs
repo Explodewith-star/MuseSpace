@@ -36,6 +36,7 @@ public static class ServiceCollectionExtensions
         // LLM 配置 + 客户端（需要特殊 HttpClient 配置，手动注册）
         services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.SectionName));
         services.Configure<DeepSeekOptions>(configuration.GetSection(DeepSeekOptions.SectionName));
+        services.Configure<VeniceOptions>(configuration.GetSection(VeniceOptions.SectionName));
 
         // OpenRouter 客户端（typed HttpClient，不直接绑定 ILlmClient）
         services.AddHttpClient<OpenRouterLlmClient>((sp, client) =>
@@ -51,6 +52,15 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<DeepSeekLlmClient>((sp, client) =>
         {
             var options = sp.GetRequiredService<IOptions<DeepSeekOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ApiKey}");
+            client.Timeout = TimeSpan.FromMinutes(3);
+        });
+
+        // Venice 客户端（仅管理员可用）
+        services.AddHttpClient<VeniceLlmClient>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<VeniceOptions>>().Value;
             client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ApiKey}");
             client.Timeout = TimeSpan.FromMinutes(3);

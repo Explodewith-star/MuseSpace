@@ -75,6 +75,7 @@ async function switchProvider(provider: LlmProviderType) {
     const s = await setLlmProvider(provider)
     active.value = s.active
     currentModel.value = s.currentModel
+    availableModels.value = s.availableModels
     saveGuestPref(s.active, s.active === 'OpenRouter' ? s.currentModel : undefined)
     toast.success(`已切换至 ${provider}`)
   } finally {
@@ -161,11 +162,19 @@ onMounted(() => {
           >
             DeepSeek
           </button>
+          <button
+            v-if="authStore.isAdmin"
+            :class="['user-menu__provider-btn', { active: active === 'Venice' }]"
+            :disabled="switching"
+            @click="switchProvider('Venice')"
+          >
+            Venice
+          </button>
         </div>
       </div>
 
-      <!-- 模型列表（仅 OpenRouter） -->
-      <div v-if="active === 'OpenRouter' && availableModels.length > 0" class="user-menu__section">
+      <!-- 模型列表（OpenRouter / Venice 有多模型，DeepSeek 无） -->
+      <div v-if="availableModels.length > 0" class="user-menu__section">
         <div class="user-menu__section-title">
           <i class="i-lucide-brain" />
           <span>模型</span>
@@ -252,8 +261,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 模型列表（仅 OpenRouter） -->
-      <div v-if="active === 'OpenRouter' && availableModels.length > 0" class="user-menu__section">
+      <!-- 模型列表（OpenRouter 有多模型，DeepSeek 无；游客不显示 Venice） -->
+      <div v-if="availableModels.length > 0" class="user-menu__section">
         <div class="user-menu__section-title">
           <i class="i-lucide-brain" />
           <span>模型</span>

@@ -12,4 +12,7 @@ public sealed class ChatCompletionRequest
 
     [JsonPropertyName("messages")]
     public List<ChatMessage> Messages { get; init; } = [];
+
+    [JsonPropertyName("stream")]
+    public bool Stream { get; init; } = true;
 }
