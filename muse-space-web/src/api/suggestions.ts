@@ -5,12 +5,13 @@ import type {
   BatchResolveSuggestionsRequest,
   OutlinePlanRequest,
   ImportOutlineRequest,
+  RegenerateOutlineVolumeRequest,
   SuggestionStatus,
 } from '@/types/models'
 
 export function getSuggestions(
   projectId: string,
-  params?: { category?: string; status?: SuggestionStatus },
+  params?: { category?: string; status?: SuggestionStatus; targetEntityId?: string },
 ): Promise<AgentSuggestionResponse[]> {
   return request.get(`/projects/${projectId}/suggestions`, { params })
 }
@@ -39,8 +40,22 @@ export function applySuggestion(
 export function ignoreSuggestion(
   projectId: string,
   id: string,
-): Promise<AgentSuggestionResponse> {
+): Promise<boolean> {
   return request.post(`/projects/${projectId}/suggestions/${id}/ignore`)
+}
+
+export function reApplySuggestion(
+  projectId: string,
+  id: string,
+): Promise<AgentSuggestionResponse> {
+  return request.post(`/projects/${projectId}/suggestions/${id}/re-apply`)
+}
+
+export function deleteSuggestion(
+  projectId: string,
+  id: string,
+): Promise<boolean> {
+  return request.delete(`/projects/${projectId}/suggestions/${id}`)
 }
 
 export function batchResolveSuggestions(
@@ -76,4 +91,26 @@ export function importOutline(
   data: ImportOutlineRequest,
 ): Promise<number> {
   return request.post(`/projects/${projectId}/suggestions/outline-import`, data)
+}
+
+/** 对大纲建议中的指定卷重做。 */
+export function regenerateOutlineVolume(
+  projectId: string,
+  suggestionId: string,
+  volumeNumber: number,
+  data?: RegenerateOutlineVolumeRequest,
+): Promise<string> {
+  return request.post(
+    `/projects/${projectId}/suggestions/${suggestionId}/volumes/${volumeNumber}/regenerate`,
+    data ?? {},
+  )
+}
+
+/** 更新建议正文 JSON（用于大纲编辑后保存，允许任意状态）。 */
+export function updateSuggestionContent(
+  projectId: string,
+  id: string,
+  contentJson: string,
+): Promise<import('@/types/models').AgentSuggestionResponse> {
+  return request.patch(`/projects/${projectId}/suggestions/${id}/content`, { contentJson })
 }

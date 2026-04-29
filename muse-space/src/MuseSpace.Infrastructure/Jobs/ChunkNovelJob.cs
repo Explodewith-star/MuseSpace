@@ -68,12 +68,11 @@ public sealed class ChunkNovelJob
         {
             var stopwatch = Stopwatch.StartNew();
 
-            // 1. Read file content
+            // 1. Read file content（自动检测编码：UTF-8 / UTF-16 BOM > GB18030 回退）
             string content;
             await using (var stream = await _storage.OpenReadAsync(novel.FileKey!))
-            using (var reader = new StreamReader(stream, System.Text.Encoding.UTF8))
             {
-                content = await reader.ReadToEndAsync();
+                content = await ReadWithEncodingDetectionAsync(stream);
             }
 
             _logger.LogInformation("ChunkNovelJob read file for novel {NovelId}: {Length} chars in {ElapsedMs} ms",
@@ -216,5 +215,45 @@ public sealed class ChunkNovelJob
         return content.Substring(previewStart, previewLength)
             .Replace("\r", "\\r", StringComparison.Ordinal)
             .Replace("\n", "\\n", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 自动检测文本编码：先识别 BOM（UTF-8 / UTF-16 LE/BE），
+    /// 无 BOM 时先以 UTF-8 解码，若替换字符（U+FFFD）数量超过阈值则回退到 GB18030。
+    /// GB18030 向后兼容 GBK / GB2312，覆盖主流中文原著 TXT。
+    /// </summary>
+    private static async Task<string> ReadWithEncodingDetectionAsync(Stream stream)
+    {
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var bytes = ms.ToArray();
+
+        if (bytes.Length == 0) return string.Empty;
+
+        // BOM 检测
+        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);          // UTF-8 BOM
+
+        if (bytes.Length >= 2)
+        {
+            if (bytes[0] == 0xFF && bytes[1] == 0xFE)
+                return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);   // UTF-16 LE BOM
+            if (bytes[0] == 0xFE && bytes[1] == 0xFF)
+                return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2); // UTF-16 BE BOM
+        }
+
+        // 无 BOM：先尝试 UTF-8（不抛出，用替换字符）
+        var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+        var utf8Text = utf8.GetString(bytes);
+
+        // 替换字符占比超过 1‰ 时认为不是 UTF-8，回退 GB18030
+        var replacementCount = utf8Text.Count(c => c == '\uFFFD');
+        if (replacementCount > 0 && (double)replacementCount / utf8Text.Length > 0.001)
+        {
+            var gb18030 = Encoding.GetEncoding("GB18030");
+            return gb18030.GetString(bytes);
+        }
+
+        return utf8Text;
     }
 }

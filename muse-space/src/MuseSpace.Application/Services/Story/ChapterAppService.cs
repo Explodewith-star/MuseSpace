@@ -16,6 +16,9 @@ public sealed class ChapterAppService
         var chapter = request.Adapt<Chapter>();
         chapter.Id = Guid.NewGuid();
         chapter.StoryProjectId = projectId;
+        // Mapster 可能把可空集合映射为 null，需确保非空
+        chapter.KeyCharacterIds ??= new List<Guid>();
+        chapter.MustIncludePoints ??= new List<string>();
         await _repository.SaveAsync(projectId, chapter, cancellationToken);
         return chapter.Adapt<ChapterResponse>();
     }
@@ -40,6 +43,10 @@ public sealed class ChapterAppService
         return true;
     }
 
+    /// <summary>批量删除章节（含关联 Scene / 草稿 / 定稿）。返回实际删除数量。</summary>
+    public async Task<int> BatchDeleteAsync(Guid projectId, IEnumerable<Guid> chapterIds, CancellationToken cancellationToken = default)
+        => await _repository.BatchDeleteAsync(projectId, chapterIds, cancellationToken);
+
     public async Task<ChapterResponse?> UpdateAsync(Guid projectId, Guid chapterId, UpdateChapterRequest request, CancellationToken cancellationToken = default)
     {
         var existing = await _repository.GetByIdAsync(projectId, chapterId, cancellationToken);
@@ -51,6 +58,10 @@ public sealed class ChapterAppService
         if (request.DraftText is not null) existing.DraftText = request.DraftText;
         if (request.FinalText is not null) existing.FinalText = request.FinalText;
         if (request.Status.HasValue) existing.Status = (MuseSpace.Domain.Enums.ChapterStatus)request.Status.Value;
+        if (request.Conflict is not null) existing.Conflict = request.Conflict;
+        if (request.EmotionCurve is not null) existing.EmotionCurve = request.EmotionCurve;
+        if (request.KeyCharacterIds is not null) existing.KeyCharacterIds = request.KeyCharacterIds;
+        if (request.MustIncludePoints is not null) existing.MustIncludePoints = request.MustIncludePoints;
 
         await _repository.SaveAsync(projectId, existing, cancellationToken);
         return existing.Adapt<ChapterResponse>();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppButton from '@/components/base/AppButton.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
@@ -8,6 +8,7 @@ import AppConfirm from '@/components/base/AppConfirm.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import { getNovels, uploadNovel, deleteNovel, getNovelStatus } from '@/api/novels'
 import { useNovelImportProgress } from '@/composables/useNovelImportProgress'
+import { useAgentProgress } from '@/composables/useAgentProgress'
 import type { NovelResponse } from '@/types/models'
 
 // crypto.randomUUID() 在 HTTP（非安全上下文）下不可用，用兼容方案
@@ -34,6 +35,7 @@ interface ActiveImportTask {
 }
 
 const route = useRoute()
+const router = useRouter()
 const projectId = computed(() => route.params.id as string)
 
 const novels = ref<NovelResponse[]>([])
@@ -42,6 +44,22 @@ const uploading = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const activeImportTasks = ref<ActiveImportTask[]>([])
 const importProgress = useNovelImportProgress()
+
+// ── 资产提取进度 ─────────────────────────────────────────────
+type AssetExtractStage = 'started' | 'generating' | 'done' | 'failed' | null
+const assetExtractStage = ref<AssetExtractStage>(null)
+const assetExtractSummary = ref('')
+const agentProgress = useAgentProgress()
+
+watch(
+  () => agentProgress.latestEvent.value,
+  (evt) => {
+    if (!evt || evt.taskType !== 'asset-extract') return
+    assetExtractStage.value = evt.stage as AssetExtractStage
+    if (evt.stage === 'done') assetExtractSummary.value = evt.summary ?? '资产提取完成'
+    if (evt.stage === 'failed') assetExtractSummary.value = evt.error ?? '提取失败'
+  },
+)
 
 const deleteTarget = ref<NovelResponse | null>(null)
 const deleteLoading = ref(false)
@@ -374,7 +392,10 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-onMounted(fetchNovels)
+onMounted(() => {
+  fetchNovels()
+  void agentProgress.joinProject(projectId.value)
+})
 
 watch(
   () => importProgress.progressEvent.value,
@@ -410,6 +431,7 @@ watch(
 onUnmounted(() => {
   stopAllImportPolling()
   void importProgress.stop()
+  agentProgress.stop()
 })
 </script>
 
@@ -434,6 +456,39 @@ onUnmounted(() => {
     <p class="page__desc">
       导入原著 TXT 文件后，系统将自动切片并生成向量索引。草稿生成时会自动检索相关段落作为参考。
     </p>
+
+    <!-- 资产提取进度 banner -->
+    <div
+      v-if="assetExtractStage && assetExtractStage !== null"
+      :class="['extract-banner', `extract-banner--${assetExtractStage}`]"
+    >
+      <i
+        :class="[
+          assetExtractStage === 'done' ? 'i-lucide-check-circle' :
+          assetExtractStage === 'failed' ? 'i-lucide-alert-circle' :
+          'i-lucide-loader-2 banner-spin'
+        ]"
+      />
+      <span class="banner-text">
+        <template v-if="assetExtractStage === 'started'">正在启动角色/世界观/文风提取...</template>
+        <template v-else-if="assetExtractStage === 'generating'">AI 正在分析原著，提取角色、世界观规则和文风画像...</template>
+        <template v-else-if="assetExtractStage === 'done'">{{ assetExtractSummary }}，请前往建议中心查看</template>
+        <template v-else-if="assetExtractStage === 'failed'">提取失败：{{ assetExtractSummary }}</template>
+      </span>
+      <button
+        v-if="assetExtractStage === 'done'"
+        class="banner-action"
+        @click="router.push(`/projects/${projectId}/suggestions`)"
+      >
+        前往建议中心 →
+      </button>
+      <button
+        class="banner-close"
+        @click="assetExtractStage = null"
+      >
+        <i class="i-lucide-x" />
+      </button>
+    </div>
 
     <div v-if="activeImportTasks.length" class="novel-list novel-list--active">
       <div v-for="task in activeImportTasks" :key="task.localId" class="novel-row novel-row--active">
@@ -481,8 +536,15 @@ onUnmounted(() => {
       v-else-if="!visibleNovels.length && !activeImportTasks.length"
       icon="i-lucide-book-open"
       title="还没有导入原著"
-      description="点击右上角「导入原著」按钮，上传 TXT 格式文件，AI 将自动提取参考片段"
-    />
+      description="上传 TXT 格式原著后，AI 将自动切片并向量化，随后可一键提取角色、世界观与文风档案，为 AI 写作提供参考素材"
+    >
+      <template #action>
+        <AppButton @click="fileInputRef?.click()">
+          <i class="i-lucide-upload" />
+          导入原著
+        </AppButton>
+      </template>
+    </AppEmpty>
 
     <!-- 原著列表 -->
     <div v-else class="novel-list">
@@ -513,7 +575,7 @@ onUnmounted(() => {
     <AppConfirm
       v-model="deleteDialogOpen"
       title="删除原著"
-      :message="deleteTarget ? `确定要删除「${deleteTarget.title}」吗？相关切片和向量数据也将被清除。` : ''"
+      :message="deleteTarget ? `确定要删除「${deleteTarget.title}」吗？\n\n将同时清除：切片数据、向量索引，以及该原著提取出的未应用建议（已应用的角色/世界观规则不受影响）。` : ''"
       confirm-text="删除"
       variant="danger"
       :loading="deleteLoading"
@@ -706,5 +768,72 @@ onUnmounted(() => {
   to {
     transform: translateX(280%);
   }
+}
+
+/* ── 资产提取 banner ── */
+.extract-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  margin-bottom: 16px;
+  background: var(--color-info-bg, #eff6ff);
+  border: 1px solid var(--color-info-border, #bfdbfe);
+  color: var(--color-info-text, #1d4ed8);
+}
+.extract-banner--done {
+  background: var(--color-success-bg, #f0fdf4);
+  border-color: var(--color-success-border, #bbf7d0);
+  color: var(--color-success-text, #15803d);
+}
+.extract-banner--failed {
+  background: var(--color-danger-bg, #fef2f2);
+  border-color: var(--color-danger-border, #fecaca);
+  color: var(--color-danger-text, #b91c1c);
+}
+
+.banner-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.banner-action {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
+  padding: 0;
+}
+.banner-action:hover {
+  opacity: 0.8;
+}
+
+.banner-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.5;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+.banner-close:hover {
+  opacity: 1;
+}
+
+.banner-spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 </style>

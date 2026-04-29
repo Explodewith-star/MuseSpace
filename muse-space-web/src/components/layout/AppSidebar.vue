@@ -24,7 +24,8 @@ const route = useRoute()
 const isCollapsed = ref(false)
 
 function isActive(to: string): boolean {
-  return route.path === to || route.path.startsWith(to + '/')
+  const [toPath] = to.split('?')
+  return route.path === toPath || route.path.startsWith(toPath + '/')
 }
 
 function toggle() {

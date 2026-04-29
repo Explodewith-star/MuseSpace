@@ -37,4 +37,38 @@ public sealed class JsonChapterRepository : JsonRepositoryBase, IChapterReposito
         all.RemoveAll(c => c.Id == chapterId);
         await WriteFileAsync(FilePath(projectId), all, cancellationToken);
     }
+
+    public async Task<int> BatchDeleteAsync(Guid projectId, IEnumerable<Guid> chapterIds, CancellationToken cancellationToken = default)
+    {
+        var ids = chapterIds.ToHashSet();
+        if (ids.Count == 0) return 0;
+        var all = await GetByProjectAsync(projectId, cancellationToken);
+        var before = all.Count;
+        all.RemoveAll(c => ids.Contains(c.Id));
+        await WriteFileAsync(FilePath(projectId), all, cancellationToken);
+        return before - all.Count;
+    }
+
+    public async Task<int> DeleteBySourceSuggestionIdAsync(Guid suggestionId, CancellationToken cancellationToken = default)
+    {
+        // JSON 仓储无法跨项目查，遍历所有项目目录
+        var dir = Path.Combine(_basePath, "projects");
+        if (!Directory.Exists(dir)) return 0;
+        var total = 0;
+        foreach (var projectDir in Directory.GetDirectories(dir))
+        {
+            if (!Guid.TryParse(Path.GetFileName(projectDir), out var projectId)) continue;
+            var path = FilePath(projectId);
+            if (!File.Exists(path)) continue;
+            var all = await ReadFileAsync<Chapter>(path, cancellationToken);
+            var before = all.Count;
+            all.RemoveAll(c => c.SourceSuggestionId == suggestionId);
+            if (all.Count != before)
+            {
+                await WriteFileAsync(path, all, cancellationToken);
+                total += before - all.Count;
+            }
+        }
+        return total;
+    }
 }

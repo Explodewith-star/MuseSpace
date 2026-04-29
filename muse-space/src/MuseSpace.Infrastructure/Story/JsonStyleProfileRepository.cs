@@ -18,4 +18,12 @@ public sealed class JsonStyleProfileRepository : JsonRepositoryBase, IStyleProfi
 
     public Task SaveAsync(Guid projectId, StyleProfile profile, CancellationToken cancellationToken = default)
         => WriteSingleFileAsync(FilePath(projectId), profile, cancellationToken);
+
+    public Task DeleteAsync(Guid projectId, Guid profileId, CancellationToken cancellationToken = default)
+    {
+        var path = FilePath(projectId);
+        if (File.Exists(path))
+            File.Delete(path);
+        return Task.CompletedTask;
+    }
 }

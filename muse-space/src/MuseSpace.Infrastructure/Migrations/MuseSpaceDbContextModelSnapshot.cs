@@ -106,6 +106,9 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<DateTime?>("ResolvedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("SourceNovelId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -124,6 +127,8 @@ namespace MuseSpace.Infrastructure.Migrations
 
                     b.HasIndex("AgentRunId");
 
+                    b.HasIndex("SourceNovelId");
+
                     b.HasIndex("StoryProjectId");
 
                     b.HasIndex("StoryProjectId", "Status");
@@ -137,7 +142,13 @@ namespace MuseSpace.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Conflict")
+                        .HasColumnType("text");
+
                     b.Property<string>("DraftText")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EmotionCurve")
                         .HasColumnType("text");
 
                     b.Property<string>("FinalText")
@@ -146,8 +157,17 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<string>("Goal")
                         .HasColumnType("text");
 
+                    b.PrimitiveCollection<List<Guid>>("KeyCharacterIds")
+                        .HasColumnType("uuid[]");
+
+                    b.PrimitiveCollection<List<string>>("MustIncludePoints")
+                        .HasColumnType("text[]");
+
                     b.Property<int>("Number")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("SourceSuggestionId")
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -163,6 +183,8 @@ namespace MuseSpace.Infrastructure.Migrations
                         .HasColumnType("character varying(500)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SourceSuggestionId");
 
                     b.HasIndex("StoryProjectId");
 
@@ -639,6 +661,68 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.ToTable("chunk_embeddings", "memory");
                 });
 
+            modelBuilder.Entity("MuseSpace.Domain.Entities.AgentSuggestion", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.Chapter", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.Character", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.GenerationRecord", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.Novel", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.Scene", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.Chapter", null)
+                        .WithMany()
+                        .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.StyleProfile", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MuseSpace.Domain.Entities.UserLlmPreference", b =>
                 {
                     b.HasOne("MuseSpace.Domain.Entities.User", "User")
@@ -648,6 +732,15 @@ namespace MuseSpace.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.WorldRule", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

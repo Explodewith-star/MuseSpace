@@ -44,6 +44,12 @@ public sealed class CharacterSuggestionApplier : ISuggestionApplier
         return character.Id;
     }
 
+    public async Task RetractAsync(AgentSuggestion suggestion, CancellationToken cancellationToken = default)
+    {
+        if (suggestion.TargetEntityId.HasValue)
+            await _characterRepository.DeleteAsync(suggestion.StoryProjectId, suggestion.TargetEntityId.Value, cancellationToken);
+    }
+
     /// <summary>ContentJson 的内部解析模型。</summary>
     private sealed class CharacterPayload
     {

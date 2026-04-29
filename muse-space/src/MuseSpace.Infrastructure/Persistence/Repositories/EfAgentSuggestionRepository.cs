@@ -14,7 +14,7 @@ public sealed class EfAgentSuggestionRepository : IAgentSuggestionRepository
         => await _db.AgentSuggestions.FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
 
     public async Task<List<AgentSuggestion>> GetByProjectAsync(
-        Guid projectId, string? category = null, SuggestionStatus? status = null, CancellationToken cancellationToken = default)
+        Guid projectId, string? category = null, SuggestionStatus? status = null, Guid? targetEntityId = null, CancellationToken cancellationToken = default)
     {
         var query = _db.AgentSuggestions.Where(s => s.StoryProjectId == projectId);
 
@@ -23,6 +23,9 @@ public sealed class EfAgentSuggestionRepository : IAgentSuggestionRepository
 
         if (status.HasValue)
             query = query.Where(s => s.Status == status.Value);
+
+        if (targetEntityId.HasValue)
+            query = query.Where(s => s.TargetEntityId == targetEntityId.Value);
 
         return await query.OrderByDescending(s => s.CreatedAt).ToListAsync(cancellationToken);
     }
@@ -48,5 +51,26 @@ public sealed class EfAgentSuggestionRepository : IAgentSuggestionRepository
     {
         _db.AgentSuggestions.Update(suggestion);
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await _db.AgentSuggestions
+            .Where(s => s.Id == id)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task<int> DeleteByIdsAsync(List<Guid> ids, CancellationToken cancellationToken = default)
+    {
+        return await _db.AgentSuggestions
+            .Where(s => ids.Contains(s.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    public async Task<int> DeleteBySourceNovelIdAsync(Guid novelId, CancellationToken cancellationToken = default)
+    {
+        return await _db.AgentSuggestions
+            .Where(s => s.SourceNovelId == novelId && s.Status != SuggestionStatus.Applied)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 }

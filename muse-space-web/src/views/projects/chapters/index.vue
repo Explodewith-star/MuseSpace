@@ -50,7 +50,7 @@ const planModalOpen = ref(false)
 const planForm = reactive({
   goal: '',
   chapterCount: 10,
-  mode: 'new' as 'new' | 'continue',
+  mode: 'new' as 'new' | 'continue' | 'extra',
 })
 const planLoading = ref(false)
 
@@ -175,7 +175,7 @@ watch(outlineStage, (e) => {
       <span>有 <strong>{{ pendingOutlineCount }}</strong> 份待处理大纲草案，前往建议中心查看并导入章节</span>
       <AppButton
         size="sm"
-        @click="router.push(`/projects/${projectId}/suggestions?category=Outline`)"
+        @click="router.push(`/projects/${projectId}/outline`)"
       >
         前往查看
       </AppButton>
@@ -298,10 +298,21 @@ watch(outlineStage, (e) => {
             <i class="i-lucide-arrow-right-from-line" />
             续写扩展
           </button>
+          <button
+            :class="['plan-mode-btn', { active: planForm.mode === 'extra' }]"
+            :disabled="!chapters.length"
+            @click="planForm.mode = 'extra'"
+          >
+            <i class="i-lucide-sparkles" />
+            番外/支线
+          </button>
         </div>
 
         <p v-if="planForm.mode === 'continue' && chapters.length" class="plan-hint">
           将基于已有 <strong>{{ chapters.length }}</strong> 章内容续写，新章节从第 {{ chapters.length + 1 }} 章开始。
+        </p>
+        <p v-else-if="planForm.mode === 'extra' && chapters.length" class="plan-hint">
+          将生成番外/支线卷，不影响主线，章号从第 {{ chapters.length + 1 }} 章开始。
         </p>
 
         <!-- 上下文提示 -->
@@ -326,6 +337,10 @@ watch(outlineStage, (e) => {
           type="number"
           placeholder="10"
         />
+        <p class="plan-count-tip">
+          <i class="i-lucide-lightbulb" />
+          建议设置 <strong>15～25 章</strong>；少于 10 章大纲较粗，超过 30 章 AI 容易生成重复内容
+        </p>
       </div>
       <template #footer>
         <AppButton variant="ghost" @click="planModalOpen = false">取消</AppButton>
@@ -570,6 +585,26 @@ watch(outlineStage, (e) => {
   color: var(--color-text-muted);
   margin: 0;
   line-height: 1.5;
+}
+
+.plan-count-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: -6px 0 0;
+  line-height: 1.5;
+}
+
+.plan-count-tip i {
+  font-size: 13px;
+  color: var(--color-warning, #f59e0b);
+  flex-shrink: 0;
+}
+
+.plan-count-tip strong {
+  color: var(--color-text-secondary);
 }
 
 .context-info {

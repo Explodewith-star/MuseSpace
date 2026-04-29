@@ -20,4 +20,8 @@ public sealed class ConsistencySuggestionApplier : ISuggestionApplier
         // 后续 D4 可扩展为触发改写 Agent 自动修正。
         return Task.FromResult(suggestion.Id);
     }
+
+    /// <summary>一致性建议无对应资产实体，撤回时无需删除任何数据。</summary>
+    public Task RetractAsync(AgentSuggestion suggestion, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 }

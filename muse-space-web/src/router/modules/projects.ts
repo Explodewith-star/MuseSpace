@@ -28,6 +28,11 @@ const projectRoutes: RouteRecordRaw[] = [
         component: () => import('@/views/projects/chapters/detail/index.vue'),
       },
       {
+        path: 'outline',
+        name: 'ProjectOutline',
+        component: () => import('@/views/projects/outline/index.vue'),
+      },
+      {
         path: 'characters',
         name: 'ProjectCharacters',
         component: () => import('@/views/projects/characters/index.vue'),
@@ -61,6 +66,11 @@ const projectRoutes: RouteRecordRaw[] = [
         path: 'suggestions/outline/:suggestionId',
         name: 'OutlineDetail',
         component: () => import('@/views/projects/suggestions/OutlineDetail.vue'),
+      },
+      {
+        path: 'suggestions/asset/:suggestionId',
+        name: 'AssetSuggestionDetail',
+        component: () => import('@/views/projects/suggestions/AssetSuggestionDetail.vue'),
       },
     ],
   },

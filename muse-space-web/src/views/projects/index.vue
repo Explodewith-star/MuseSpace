@@ -13,6 +13,7 @@ const projectId = computed(() => route.params.id as string)
 const navItems = computed(() => [
   { label: '概览', icon: 'i-lucide-layout-dashboard', to: `/projects/${projectId.value}/overview` },
   { label: '章节', icon: 'i-lucide-book-text', to: `/projects/${projectId.value}/chapters` },
+  { label: '大纲', icon: 'i-lucide-list-tree', to: `/projects/${projectId.value}/outline` },
   { label: '角色', icon: 'i-lucide-users', to: `/projects/${projectId.value}/characters` },
   { label: '世界观', icon: 'i-lucide-globe', to: `/projects/${projectId.value}/world-rules` },
   { label: '文风', icon: 'i-lucide-pen-line', to: `/projects/${projectId.value}/style-profile` },

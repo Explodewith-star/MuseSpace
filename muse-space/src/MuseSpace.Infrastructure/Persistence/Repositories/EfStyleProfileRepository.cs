@@ -22,4 +22,15 @@ public sealed class EfStyleProfileRepository : IStyleProfileRepository
             : EntityState.Added;
         await _db.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task DeleteAsync(Guid projectId, Guid profileId, CancellationToken cancellationToken = default)
+    {
+        var profile = await _db.StyleProfiles
+            .FirstOrDefaultAsync(s => s.StoryProjectId == projectId && s.Id == profileId, cancellationToken);
+        if (profile is not null)
+        {
+            _db.StyleProfiles.Remove(profile);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+    }
 }

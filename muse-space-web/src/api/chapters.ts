@@ -27,3 +27,18 @@ export function updateChapter(
 export function deleteChapter(projectId: string, chapterId: string): Promise<void> {
   return request.delete(`/projects/${projectId}/chapters/${chapterId}`)
 }
+
+/** 批量删除章节（级联删除 Scene / 草稿 / 定稿） */
+export function batchDeleteChapters(projectId: string, chapterIds: string[]): Promise<number> {
+  return request.post(`/projects/${projectId}/chapters/batch-delete`, { chapterIds })
+}
+
+/** 触发章节自动规划（写回 conflict/emotionCurve/keyCharacterIds/mustIncludePoints） */
+export function autoPlanChapter(projectId: string, chapterId: string): Promise<string> {
+  return request.post(`/projects/${projectId}/chapters/${chapterId}/auto-plan`)
+}
+
+/** 触发章节草稿生成 */
+export function generateChapterDraft(projectId: string, chapterId: string): Promise<string> {
+  return request.post(`/projects/${projectId}/chapters/${chapterId}/generate-draft`)
+}

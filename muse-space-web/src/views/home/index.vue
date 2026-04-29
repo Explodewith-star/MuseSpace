@@ -115,7 +115,7 @@ const {
     <AppConfirm
       :model-value="!!deleteTarget"
       title="删除项目"
-      :message="`确定删除项目《${deleteTarget?.name}》吗？此操作不可恢复。`"
+      :message="`确定删除项目《${deleteTarget?.name}》吗？\n\n项目内所有章节、角色、世界观规则、原著导入及 AI 建议将被永久删除，不可恢复。`"
       variant="danger"
       confirm-text="删除"
       :loading="deleteLoading"

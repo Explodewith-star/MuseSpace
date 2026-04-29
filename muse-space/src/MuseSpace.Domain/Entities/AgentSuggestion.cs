@@ -28,6 +28,12 @@ public class AgentSuggestion
     /// <summary>建议状态。</summary>
     public SuggestionStatus Status { get; set; } = SuggestionStatus.Pending;
 
+    /// <summary>
+    /// 来源原著 ID（仅资产提取类建议填写，一致性检查/大纲等为 null）。
+    /// 用于删除原著时精确清理本书产出的未应用建议，与其他书隔离。
+    /// </summary>
+    public Guid? SourceNovelId { get; set; }
+
     /// <summary>应用目标实体 ID（如已有角色的 Id），null 表示新建。</summary>
     public Guid? TargetEntityId { get; set; }
 

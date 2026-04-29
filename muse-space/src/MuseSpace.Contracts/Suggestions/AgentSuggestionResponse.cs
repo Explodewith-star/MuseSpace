@@ -10,6 +10,7 @@ public sealed class AgentSuggestionResponse
     public string ContentJson { get; init; } = "{}";
     public string Status { get; init; } = string.Empty;
     public Guid? TargetEntityId { get; init; }
+    public Guid? SourceNovelId { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime? ResolvedAt { get; init; }
 }

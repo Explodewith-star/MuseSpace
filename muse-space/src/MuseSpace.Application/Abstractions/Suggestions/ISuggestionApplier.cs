@@ -15,4 +15,9 @@ public interface ISuggestionApplier
     /// 把建议内容写入正式业务表，返回新建/更新的实体 ID。
     /// </summary>
     Task<Guid> ApplyAsync(AgentSuggestion suggestion, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 删除该建议应用后创建的资产实体，使其不再被 AI 创作时引用。
+    /// </summary>
+    Task RetractAsync(AgentSuggestion suggestion, CancellationToken cancellationToken = default);
 }

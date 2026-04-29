@@ -127,6 +127,9 @@ public sealed class EmbedNovelJob
 
             await _notifier.NotifyImportDoneAsync(novelId, total);
 
+            // 链式触发：自动资产提取
+            BackgroundJob.Enqueue<ExtractNovelAssetsJob>(j => j.ExecuteAsync(novelId, null));
+
             _logger.LogInformation("EmbedNovelJob completed for novel {NovelId} in {ElapsedMs} ms", novelId, stopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex)

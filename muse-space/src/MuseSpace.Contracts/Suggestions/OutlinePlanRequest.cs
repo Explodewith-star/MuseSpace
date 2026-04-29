@@ -9,6 +9,6 @@ public sealed class OutlinePlanRequest
     /// <summary>期望生成的章节数量（默认 10）。</summary>
     public int ChapterCount { get; init; } = 10;
 
-    /// <summary>规划模式："new" = 全新规划，"continue" = 续写扩展。</summary>
+    /// <summary>规划模式："new" = 全新规划，"continue" = 续写扩展，"extra" = 番外。</summary>
     public string Mode { get; init; } = "new";
 }

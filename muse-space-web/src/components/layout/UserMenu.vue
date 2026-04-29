@@ -7,12 +7,14 @@ import { useToast } from '@/composables/useToast'
 import { getLlmProvider, setLlmProvider, setLlmModel } from '@/api/llmProvider'
 import type { LlmProviderType, LlmModelOption } from '@/types/models'
 
+const GUEST_PREF_KEY = 'musespace_guest_llm'
+
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
 
 // LLM 状态
-const active = ref<LlmProviderType>('OpenRouter')
+const active = ref<LlmProviderType>('DeepSeek')
 const currentModel = ref('')
 const availableModels = ref<LlmModelOption[]>([])
 const switching = ref(false)
@@ -22,8 +24,41 @@ const modelLabel = computed(() => {
   return found?.label ?? currentModel.value
 })
 
+// ── 游客偏好持久化 ──────────────────────────────────────────────
+interface GuestPref { provider: LlmProviderType; modelId?: string }
+
+function saveGuestPref(provider: LlmProviderType, modelId?: string) {
+  if (authStore.isGuest) {
+    localStorage.setItem(GUEST_PREF_KEY, JSON.stringify({ provider, modelId }))
+  }
+}
+
+function loadGuestPref(): GuestPref | null {
+  try {
+    const raw = localStorage.getItem(GUEST_PREF_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+// ── 加载当前状态 ────────────────────────────────────────────────
 async function loadStatus() {
   try {
+    // 游客：先把本地偏好同步到后端 Scope，再读取确认状态
+    if (authStore.isGuest) {
+      const pref = loadGuestPref()
+      if (pref) {
+        if (pref.provider === 'DeepSeek') {
+          await setLlmProvider('DeepSeek')
+        } else if (pref.modelId) {
+          await setLlmModel(pref.modelId)
+        } else if (pref.provider) {
+          await setLlmProvider(pref.provider)
+        }
+      }
+    }
+
     const s = await getLlmProvider()
     active.value = s.active
     currentModel.value = s.currentModel
@@ -40,6 +75,7 @@ async function switchProvider(provider: LlmProviderType) {
     const s = await setLlmProvider(provider)
     active.value = s.active
     currentModel.value = s.currentModel
+    saveGuestPref(s.active, s.active === 'OpenRouter' ? s.currentModel : undefined)
     toast.success(`已切换至 ${provider}`)
   } finally {
     switching.value = false
@@ -53,6 +89,7 @@ async function switchModel(modelId: string) {
     const s = await setLlmModel(modelId)
     active.value = s.active
     currentModel.value = s.currentModel
+    saveGuestPref('OpenRouter', modelId)
     toast.success('模型已更新')
   } finally {
     switching.value = false
@@ -69,11 +106,12 @@ function handleLogout() {
 }
 
 onMounted(() => {
-  if (authStore.isLoggedIn) loadStatus()
+  loadStatus()
 })
 </script>
 
 <template>
+  <!-- 已登录用户菜单 -->
   <AppDropdown v-if="authStore.isLoggedIn" align="right">
     <!-- 触发器：复用原来的用户 tag 风格 -->
     <template #trigger>
@@ -166,11 +204,87 @@ onMounted(() => {
     </div>
   </AppDropdown>
 
-  <!-- 未登录：直接显示登录按钮 -->
-  <router-link v-else to="/login" class="user-menu__login">
-    <i class="i-lucide-log-in" />
-    <span>登录</span>
-  </router-link>
+  <!-- 游客：AI 渠道选择 + 登录入口 -->
+  <AppDropdown v-else align="right">
+    <template #trigger>
+      <button class="user-menu__trigger" type="button">
+        <i class="i-lucide-cpu" />
+        <span class="user-menu__phone">AI: {{ active === 'DeepSeek' ? 'DeepSeek' : modelLabel || 'OpenRouter' }}</span>
+        <i class="i-lucide-chevron-down user-menu__caret" />
+      </button>
+    </template>
+
+    <div class="user-menu__panel">
+      <!-- 游客标识 -->
+      <div class="user-menu__header">
+        <div class="user-menu__avatar user-menu__avatar--guest">
+          <i class="i-lucide-user-x" />
+        </div>
+        <div class="user-menu__info">
+          <div class="user-menu__info-phone">游客模式</div>
+          <div class="user-menu__info-role">选择偏好将保存在本地</div>
+        </div>
+      </div>
+
+      <div class="user-menu__divider" />
+
+      <!-- AI 渠道 -->
+      <div class="user-menu__section">
+        <div class="user-menu__section-title">
+          <i class="i-lucide-cpu" />
+          <span>AI 渠道</span>
+        </div>
+        <div class="user-menu__provider-toggle" @click.stop>
+          <button
+            :class="['user-menu__provider-btn', { active: active === 'OpenRouter' }]"
+            :disabled="switching"
+            @click="switchProvider('OpenRouter')"
+          >
+            OpenRouter
+          </button>
+          <button
+            :class="['user-menu__provider-btn', { active: active === 'DeepSeek' }]"
+            :disabled="switching"
+            @click="switchProvider('DeepSeek')"
+          >
+            DeepSeek
+          </button>
+        </div>
+      </div>
+
+      <!-- 模型列表（仅 OpenRouter） -->
+      <div v-if="active === 'OpenRouter' && availableModels.length > 0" class="user-menu__section">
+        <div class="user-menu__section-title">
+          <i class="i-lucide-brain" />
+          <span>模型</span>
+          <span class="user-menu__current">{{ modelLabel }}</span>
+        </div>
+        <div class="user-menu__model-list" @click.stop>
+          <button
+            v-for="m in availableModels"
+            :key="m.id"
+            :class="['user-menu__model-item', { active: m.id === currentModel }]"
+            :disabled="switching"
+            @click="switchModel(m.id)"
+          >
+            <i v-if="m.id === currentModel" class="i-lucide-check" />
+            <span class="user-menu__model-label">{{ m.label }}</span>
+          </button>
+        </div>
+      </div>
+      <div v-else-if="active === 'DeepSeek'" class="user-menu__hint">
+        当前使用 DeepSeek 默认模型
+      </div>
+
+      <div class="user-menu__divider" />
+
+      <!-- 登录入口 -->
+      <router-link to="/login" class="user-menu__item">
+        <i class="i-lucide-log-in" />
+        <span>登录 / 注册</span>
+      </router-link>
+    </div>
+  </AppDropdown>
 </template>
 
 <style scoped>
@@ -234,6 +348,10 @@ onMounted(() => {
   justify-content: center;
   font-size: 18px;
   flex-shrink: 0;
+}
+.user-menu__avatar--guest {
+  background: color-mix(in srgb, var(--color-text-muted) 14%, transparent);
+  color: var(--color-text-muted);
 }
 .user-menu__info-phone {
   font-size: 14px;

@@ -19,17 +19,20 @@ public sealed class NovelsController : ControllerBase
 {
     private readonly INovelRepository _novelRepo;
     private readonly INovelChunkRepository _chunkRepo;
+    private readonly IAgentSuggestionRepository _suggestionRepo;
     private readonly IStorageService _storage;
     private readonly MuseSpaceDbContext _db;
 
     public NovelsController(
         INovelRepository novelRepo,
         INovelChunkRepository chunkRepo,
+        IAgentSuggestionRepository suggestionRepo,
         IStorageService storage,
         MuseSpaceDbContext db)
     {
         _novelRepo = novelRepo;
         _chunkRepo = chunkRepo;
+        _suggestionRepo = suggestionRepo;
         _storage = storage;
         _db = db;
     }
@@ -115,7 +118,7 @@ public sealed class NovelsController : ControllerBase
         return Ok(ApiResponse<NovelResponse>.Ok(ToResponse(novel)));
     }
 
-    /// <summary>删除小说及其切片和向量数据</summary>
+    /// <summary>删除小说及其切片、向量数据，以及本书产出的未应用建议</summary>
     [HttpDelete("{novelId:guid}")]
     public async Task<ActionResult<ApiResponse<bool>>> Delete(Guid projectId, Guid novelId, CancellationToken ct)
     {
@@ -126,7 +129,10 @@ public sealed class NovelsController : ControllerBase
         if (novel.FileKey is not null)
             await _storage.DeleteAsync(novel.FileKey, ct);
 
-        // 先清 embeddings（跨 schema，raw SQL），再清 chunks，最后删主记录
+        // 1. 清理本书产出的未应用建议（Applied 的已转为正式资产，保留）
+        await _suggestionRepo.DeleteBySourceNovelIdAsync(novelId, ct);
+
+        // 2. 清 embeddings（跨 schema，raw SQL），再清 chunks，最后删主记录
         await _db.Database.ExecuteSqlRawAsync(
             "DELETE FROM memory.chunk_embeddings WHERE \"ChunkId\" IN (SELECT \"Id\" FROM novel_chunks WHERE \"NovelId\" = {0})", novelId);
         await _chunkRepo.DeleteByNovelAsync(novelId, ct);

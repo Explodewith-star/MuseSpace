@@ -28,6 +28,11 @@ export interface ChapterResponse {
   status: number
   draftText?: string
   finalText?: string
+  conflict?: string
+  emotionCurve?: string
+  keyCharacterIds: string[]
+  mustIncludePoints: string[]
+  sourceSuggestionId?: string
 }
 
 export interface CreateChapterRequest {
@@ -35,6 +40,10 @@ export interface CreateChapterRequest {
   title?: string
   summary?: string
   goal?: string
+  conflict?: string
+  emotionCurve?: string
+  keyCharacterIds?: string[]
+  mustIncludePoints?: string[]
 }
 
 export interface UpdateChapterRequest {
@@ -44,6 +53,10 @@ export interface UpdateChapterRequest {
   draftText?: string
   finalText?: string
   status?: number
+  conflict?: string
+  emotionCurve?: string
+  keyCharacterIds?: string[]
+  mustIncludePoints?: string[]
 }
 
 // ---------- Character ----------
@@ -257,7 +270,7 @@ export interface BatchResolveSuggestionsRequest {
 export interface OutlinePlanRequest {
   goal: string
   chapterCount: number
-  mode: 'new' | 'continue'
+  mode: 'new' | 'continue' | 'extra'
 }
 
 /** 大纲建议 ContentJson 中的单章结构 */
@@ -266,6 +279,24 @@ export interface OutlineChapterItem {
   title: string
   goal: string
   summary: string
+}
+
+/** 大纲建议 ContentJson 中的卷结构 */
+export interface OutlineVolumeItem {
+  number: number
+  title: string
+  theme: string
+  chapters: OutlineChapterItem[]
+}
+
+/** 大纲建议 ContentJson 的顶层结构（分卷结构） */
+export interface OutlinePayload {
+  volumes: OutlineVolumeItem[]
+}
+
+/** 单卷重做请求 */
+export interface RegenerateOutlineVolumeRequest {
+  extraInstruction?: string
 }
 
 export interface ImportOutlineRequest {

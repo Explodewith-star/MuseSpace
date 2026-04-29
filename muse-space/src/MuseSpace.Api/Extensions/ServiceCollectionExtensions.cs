@@ -123,6 +123,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(ConsistencyCheckAgentDefinition.Create());
         services.AddSingleton(CharacterConsistencyAgentDefinition.Create());
         services.AddSingleton(OutlinePlanAgentDefinition.Create());
+        services.AddSingleton(WorldRuleExtractionAgentDefinition.Create());
+        services.AddSingleton(StyleProfileExtractionAgentDefinition.Create());
+        services.AddSingleton(ChapterPlanGenerationAgentDefinition.Create());
+        services.AddSingleton(StyleConsistencyAgentDefinition.Create());
         // Agent 工具注册（P0 暂无工具，P1 扩展时通过 Scrutor 或手动注册 IAgentTool）
         // AgentRunner（Scoped：依赖 DbContext + ILlmClient 都是 Scoped）
         services.AddScoped<IAgentRunner, AgentRunner>();

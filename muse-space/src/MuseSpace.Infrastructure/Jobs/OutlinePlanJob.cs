@@ -100,7 +100,7 @@ public sealed class OutlinePlanJob
 
             // 续写模式：将已有章节作为上下文
             int startNumber = 1;
-            if (mode == "continue" && orderedChapters.Count > 0)
+            if ((mode == "continue" || mode == "extra") && orderedChapters.Count > 0)
             {
                 startNumber = orderedChapters.Max(c => c.Number) + 1;
                 var chaptersText = string.Join("\n", orderedChapters.Select(c =>
@@ -113,9 +113,12 @@ public sealed class OutlinePlanJob
                 : "";
 
             // 3. 构造 prompt
-            var modeDescription = mode == "continue"
-                ? $"请接续已有的 {orderedChapters.Count} 章内容，从第 {startNumber} 章开始续写规划。"
-                : $"请从第 1 章开始进行全新规划。";
+            var modeDescription = mode switch
+            {
+                "continue" => $"请接续已有的 {orderedChapters.Count} 章内容，从第 {startNumber} 章开始续写规划。",
+                "extra" => $"请基于已有项目设定，规划一段【番外】支线，从第 {startNumber} 章开始；可独立成卷，主题应区别于主线。",
+                _ => "请从第 1 章开始进行全新规划。",
+            };
 
             var userPrompt = $"""
                 {contextBlock}## 规划要求
@@ -151,16 +154,22 @@ public sealed class OutlinePlanJob
                 return;
             }
 
-            // 5. 解析章节数组 JSON
+            // 5. 解析分卷 JSON（LLM 有时在数组中输出占位字符串或注释，用 JsonDocument 容错解析）
             var json = result.Output.Trim();
             if (json.StartsWith("```"))
                 json = Regex.Replace(json, @"```\w*\n?", "").Trim('`').Trim();
 
-            List<OutlineChapterItem> items;
+            // 若 JSON 前后有说明文字，尝试提取第一个完整 {...} 块
+            if (!json.StartsWith("{"))
+            {
+                var m = Regex.Match(json, @"\{[\s\S]+\}", RegexOptions.Singleline);
+                if (m.Success) json = m.Value;
+            }
+
+            List<OutlineVolumeItem> volumes;
             try
             {
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                items = JsonSerializer.Deserialize<List<OutlineChapterItem>>(json, opts) ?? [];
+                volumes = ParseVolumesTolerant(json);
             }
             catch (Exception ex)
             {
@@ -168,31 +177,41 @@ public sealed class OutlinePlanJob
                 await _progressNotifier.NotifyFailedAsync(projectId, taskType, "大纲 JSON 解析失败");
                 return;
             }
-
-            if (items.Count == 0)
+            if (volumes.Count == 0 || volumes.All(v => v.Chapters.Count == 0))
             {
                 _logger.LogWarning("[OutlinePlan] Agent returned empty outline for project {ProjectId}", projectId);
                 await _progressNotifier.NotifyFailedAsync(projectId, taskType, "Agent 返回了空大纲");
                 return;
             }
 
-            // 6. 修正章节编号（续写模式从 startNumber 开始）
-            if (mode == "continue")
+            // 6. 修正章节编号（跨卷连续递增；续写/番外模式从 startNumber 开始）
+            var nextNumber = (mode == "continue" || mode == "extra") ? startNumber : 1;
+            var totalChapters = 0;
+            for (var vi = 0; vi < volumes.Count; vi++)
             {
-                for (var i = 0; i < items.Count; i++)
-                    items[i].Number = startNumber + i;
+                var vol = volumes[vi];
+                if (vol.Number == 0) vol.Number = vi + 1;
+                foreach (var ch in vol.Chapters)
+                {
+                    ch.Number = nextNumber++;
+                    totalChapters++;
+                }
             }
 
-            // 7. 写入一条 Outline 类型建议
-            var contentJson = JsonSerializer.Serialize(items, new JsonSerializerOptions
+            // 7. 序列化并写入 Outline 类型建议
+            var contentJson = JsonSerializer.Serialize(new { volumes }, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 WriteIndented = false,
             });
 
-            var totalChapters = items.Count;
             var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
-            var modeLabel = mode == "continue" ? "续写" : "全新";
+            var modeLabel = mode switch
+            {
+                "continue" => "续写",
+                "extra" => "番外",
+                _ => "全新",
+            };
 
             await _suggestionService.CreateAsync(
                 agentRunId: agentContext.RunId,
@@ -214,12 +233,91 @@ public sealed class OutlinePlanJob
         }
     }
 
+    private sealed class OutlinePayload
+    {
+        public List<OutlineVolumeItem> Volumes { get; set; } = [];
+    }
+
+    private sealed class OutlineVolumeItem
+    {
+        public int Number { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Theme { get; set; } = string.Empty;
+        public List<OutlineChapterItem> Chapters { get; set; } = [];
+    }
+
     private sealed class OutlineChapterItem
     {
         public int Number { get; set; }
         public string Title { get; set; } = string.Empty;
         public string Goal { get; set; } = string.Empty;
         public string Summary { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// 容错解析 volumes JSON。
+    /// LLM 有时在 volumes 数组中夹杂字符串占位符（如 "..."）、null 或注释，
+    /// 使用 JsonDocument 逐元素解析，自动跳过非对象项。
+    /// </summary>
+    private static List<OutlineVolumeItem> ParseVolumesTolerant(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        // 允许顶层直接是 volumes 数组，也允许包裹在 { volumes: [...] } 中
+        JsonElement volumesEl;
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            volumesEl = root;
+        }
+        else if (root.ValueKind == JsonValueKind.Object
+                 && root.TryGetProperty("volumes", out var ve))
+        {
+            volumesEl = ve;
+        }
+        else
+        {
+            return [];
+        }
+
+        if (volumesEl.ValueKind != JsonValueKind.Array) return [];
+
+        var volumes = new List<OutlineVolumeItem>();
+        var volIdx = 0;
+        foreach (var volEl in volumesEl.EnumerateArray())
+        {
+            volIdx++;
+            if (volEl.ValueKind != JsonValueKind.Object) continue; // 跳过 "..." 等非对象
+
+            var vol = new OutlineVolumeItem
+            {
+                Number = volEl.TryGetProperty("number", out var n) && n.TryGetInt32(out var ni) ? ni : volIdx,
+                Title = volEl.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString()! : string.Empty,
+                Theme = volEl.TryGetProperty("theme", out var th) && th.ValueKind == JsonValueKind.String ? th.GetString()! : string.Empty,
+            };
+
+            if (volEl.TryGetProperty("chapters", out var chapEl) && chapEl.ValueKind == JsonValueKind.Array)
+            {
+                var chIdx = 0;
+                foreach (var chEl in chapEl.EnumerateArray())
+                {
+                    chIdx++;
+                    if (chEl.ValueKind != JsonValueKind.Object) continue;
+
+                    vol.Chapters.Add(new OutlineChapterItem
+                    {
+                        Number = chEl.TryGetProperty("number", out var cn) && cn.TryGetInt32(out var cni) ? cni : chIdx,
+                        Title = chEl.TryGetProperty("title", out var ct) && ct.ValueKind == JsonValueKind.String ? ct.GetString()! : string.Empty,
+                        Goal = chEl.TryGetProperty("goal", out var cg) && cg.ValueKind == JsonValueKind.String ? cg.GetString()! : string.Empty,
+                        Summary = chEl.TryGetProperty("summary", out var cs) && cs.ValueKind == JsonValueKind.String ? cs.GetString()! : string.Empty,
+                    });
+                }
+            }
+
+            volumes.Add(vol);
+        }
+
+        return volumes;
     }
 
     /// <summary>

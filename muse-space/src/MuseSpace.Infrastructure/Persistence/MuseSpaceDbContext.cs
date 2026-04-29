@@ -60,8 +60,16 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.Summary).HasColumnType("text");
             entity.Property(e => e.DraftText).HasColumnType("text");
             entity.Property(e => e.FinalText).HasColumnType("text");
+            entity.Property(e => e.Conflict).HasColumnType("text");
+            entity.Property(e => e.EmotionCurve).HasColumnType("text");
+            entity.Property(e => e.KeyCharacterIds).HasColumnType("uuid[]").IsRequired(false);
+            entity.Property(e => e.MustIncludePoints).HasColumnType("text[]").IsRequired(false);
+            entity.Property(e => e.SourceSuggestionId);
+            entity.HasIndex(e => e.SourceSuggestionId);
             entity.HasIndex(e => e.StoryProjectId);
             entity.HasIndex(e => new { e.StoryProjectId, e.Number }).IsUnique();
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── Scene ─────────────────────────────────────────────────────────────
@@ -78,6 +86,8 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.FinalText).HasColumnType("text");
             entity.HasIndex(e => e.ChapterId);
             entity.HasIndex(e => new { e.ChapterId, e.Sequence });
+            entity.HasOne<Chapter>().WithMany().HasForeignKey(e => e.ChapterId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── Character ────────────────────────────────────────────────────────
@@ -96,6 +106,8 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.PrivateSecrets).HasColumnType("text");
             entity.Property(e => e.CurrentState).HasColumnType("text");
             entity.HasIndex(e => e.StoryProjectId);
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── StyleProfile ─────────────────────────────────────────────────────
@@ -107,6 +119,8 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.SampleReferenceText).HasColumnType("text");
             entity.Property(e => e.ForbiddenExpressions).HasColumnType("text");
             entity.HasIndex(e => e.StoryProjectId);
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── WorldRule ────────────────────────────────────────────────────────
@@ -118,6 +132,8 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.Category).HasMaxLength(200);
             entity.Property(e => e.Description).HasColumnType("text");
             entity.HasIndex(e => e.StoryProjectId);
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── GenerationRecord ─────────────────────────────────────────────────
@@ -135,6 +151,8 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.OutputPreview).HasColumnType("text");
             entity.HasIndex(e => e.StoryProjectId);
             entity.HasIndex(e => e.CreatedAt);
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── Novel ─────────────────────────────────────────────────────────────
@@ -149,9 +167,10 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.LastError).HasColumnType("text");
             entity.Property(e => e.Status).HasConversion<int>();
             entity.HasIndex(e => e.StoryProjectId);
-            // 同一项目内同一文件 hash 不允许重复导入
             entity.HasIndex(e => new { e.StoryProjectId, e.FileHash })
                   .HasFilter("\"FileHash\" IS NOT NULL");
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── NovelChunk ───────────────────────────────────────────────────────
@@ -228,9 +247,13 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.Title).HasMaxLength(500).IsRequired();
             entity.Property(e => e.ContentJson).HasColumnType("text").IsRequired();
             entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.SourceNovelId).IsRequired(false);
             entity.HasIndex(e => e.AgentRunId);
             entity.HasIndex(e => e.StoryProjectId);
             entity.HasIndex(e => new { e.StoryProjectId, e.Status });
+            entity.HasIndex(e => e.SourceNovelId);
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
