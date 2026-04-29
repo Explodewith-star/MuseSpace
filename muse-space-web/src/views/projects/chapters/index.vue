@@ -75,7 +75,7 @@ function openPlanModal() {
   // 根据当前章节数自动选模式
   planForm.mode = chapters.value.length > 0 ? 'continue' : 'new'
   planForm.goal = ''
-  planForm.chapterCount = 10
+  planForm.chapterCount = '10'
   loadContextStats()
   planModalOpen.value = true
 }
