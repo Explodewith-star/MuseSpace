@@ -93,10 +93,6 @@ const chapterGroups = computed<ChapterGroup[]>(() => {
 
 const totalChapters = computed(() => chapters.value.length)
 
-// ── 草案统计 ──────────────────────────────────────────
-const pendingSuggestions = computed(() => outlineSuggestions.value.filter(s => s.status === 'Pending'))
-const appliedSuggestions = computed(() => outlineSuggestions.value.filter(s => s.status === 'Applied'))
-
 // ── AI 大纲规划弹窗 ──────────────────────────────────
 const planModalOpen = ref(false)
 const planForm = reactive({ goal: '', chapterCount: '10', mode: 'new' as 'new' | 'continue' | 'extra' })

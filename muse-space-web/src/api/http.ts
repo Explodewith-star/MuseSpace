@@ -97,6 +97,9 @@ const request = {
   put<T = unknown>(url: string, data?: unknown, config?: ExtendedConfig): Promise<T> {
     return http.put(url, data, config)
   },
+  patch<T = unknown>(url: string, data?: unknown, config?: ExtendedConfig): Promise<T> {
+    return http.patch(url, data, config)
+  },
   delete<T = unknown>(url: string, config?: ExtendedConfig): Promise<T> {
     return http.delete(url, config)
   },

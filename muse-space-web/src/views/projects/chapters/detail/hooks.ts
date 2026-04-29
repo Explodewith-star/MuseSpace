@@ -55,8 +55,6 @@ export function initChapterDetailState() {
   let autoPlanTimer: ReturnType<typeof setTimeout> | null = null
   let generateDraftTimer: ReturnType<typeof setTimeout> | null = null
 
-  const AUTO_PLAN_TIMEOUT_MS = 120_000 // 120秒超时自动复位
-
   // 本地编辑表单
   const metaForm = reactive({ title: '', goal: '', summary: '', status: 0 })
   const planForm = reactive({

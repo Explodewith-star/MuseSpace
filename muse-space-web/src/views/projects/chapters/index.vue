@@ -49,7 +49,7 @@ function goDetail(chapterId: string) {
 const planModalOpen = ref(false)
 const planForm = reactive({
   goal: '',
-  chapterCount: 10,
+  chapterCount: '10',
   mode: 'new' as 'new' | 'continue' | 'extra',
 })
 const planLoading = ref(false)
@@ -86,7 +86,7 @@ async function submitPlan() {
   try {
     await triggerOutlinePlan(projectId, {
       goal: planForm.goal,
-      chapterCount: planForm.chapterCount,
+      chapterCount: Number(planForm.chapterCount),
       mode: planForm.mode,
     })
     planModalOpen.value = false
