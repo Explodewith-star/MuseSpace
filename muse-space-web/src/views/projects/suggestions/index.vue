@@ -5,6 +5,7 @@ import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppModal from '@/components/base/AppModal.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
+import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { initSuggestionsState } from './hooks'
 import {

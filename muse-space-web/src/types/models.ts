@@ -263,7 +263,7 @@ export interface ConsistencyCheckRequest {
 
 export interface BatchResolveSuggestionsRequest {
   ids: string[]
-  action: 'Accept' | 'Ignore'
+  action: 'Accept' | 'Ignore' | 'QuickApply' | 'ReApply' | 'Delete'
 }
 
 // ---------- Outline Plan ----------

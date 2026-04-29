@@ -99,7 +99,7 @@ const appliedSuggestions = computed(() => outlineSuggestions.value.filter(s => s
 
 // ── AI 大纲规划弹窗 ──────────────────────────────────
 const planModalOpen = ref(false)
-const planForm = reactive({ goal: '', chapterCount: 10, mode: 'new' as 'new' | 'continue' | 'extra' })
+const planForm = reactive({ goal: '', chapterCount: '10', mode: 'new' as 'new' | 'continue' | 'extra' })
 const planLoading = ref(false)
 const characterCount = ref(0)
 const worldRuleCount = ref(0)
@@ -115,7 +115,7 @@ async function loadContextStats() {
 function openPlanModal() {
   planForm.mode = chapters.value.length > 0 ? 'continue' : 'new'
   planForm.goal = ''
-  planForm.chapterCount = 10
+  planForm.chapterCount = '10'
   loadContextStats()
   planModalOpen.value = true
 }
@@ -124,7 +124,7 @@ async function submitPlan() {
   if (!planForm.goal.trim()) return
   planLoading.value = true
   try {
-    await triggerOutlinePlan(projectId, { goal: planForm.goal, chapterCount: planForm.chapterCount, mode: planForm.mode })
+    await triggerOutlinePlan(projectId, { goal: planForm.goal, chapterCount: Number(planForm.chapterCount), mode: planForm.mode })
     planModalOpen.value = false
     toast.success('大纲规划已提交，请稍候...')
   } catch { /* */ }
