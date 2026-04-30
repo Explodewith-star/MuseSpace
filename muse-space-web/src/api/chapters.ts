@@ -57,3 +57,111 @@ export function autoPlanChapter(projectId: string, chapterId: string): Promise<s
 export function generateChapterDraft(projectId: string, chapterId: string): Promise<string> {
   return request.post(`/projects/${projectId}/chapters/${chapterId}/generate-draft`)
 }
+
+/** 一键采用为定稿的响应体 */
+export interface AdoptDraftResponse {
+  adopted: boolean
+  finalLength: number
+  previousFinalLength: number
+  draftLength: number
+}
+
+/**
+ * 一键将草稿采用为定稿。
+ * - 草稿为空 → 抛错（toast 提示）。
+ * - 定稿已有内容且未传 overrideExisting=true → 后端返回 409，调用方应捕获并弹二次确认。
+ *   409 时 axios 会进入 reject 分支，需通过 silent + 自行解析 error.response.data 处理。
+ */
+export function adoptChapterDraft(
+  projectId: string,
+  chapterId: string,
+  overrideExisting = false,
+): Promise<AdoptDraftResponse> {
+  return request.post(
+    `/projects/${projectId}/chapters/${chapterId}/adopt-draft`,
+    { overrideExisting },
+    // 静默模式：让调用方自行处理 409，不要走全局 toast
+    { silent: true },
+  )
+}
+
+// ─── A3 批量章节草稿生成 ───────────────────────────────────────────────────
+
+/** 批量生成草稿请求体。 */
+export interface BatchGenerateDraftRequest {
+  fromNumber: number
+  toNumber: number
+  /** 是否跳过已有草稿的章节，默认 false（覆盖原草稿）。 */
+  skipChaptersWithDraft?: boolean
+}
+
+/** 批量生成任务的运行状态。 */
+export interface ChapterBatchDraftRunResponse {
+  id: string
+  storyProjectId: string
+  fromNumber: number
+  toNumber: number
+  totalCount: number
+  completedCount: number
+  failedCount: number
+  skippedCount: number
+  failedChapterIds: string[]
+  currentChapterId?: string | null
+  status:
+    | 'Pending'
+    | 'Running'
+    | 'Completed'
+    | 'PartiallyFailed'
+    | 'Cancelled'
+    | 'Failed'
+  cancelRequested: boolean
+  createdAt: string
+  startedAt?: string | null
+  finishedAt?: string | null
+  errorMessage?: string | null
+}
+
+/** 默认上限。 */
+export const DEFAULT_BATCH_DRAFT_SIZE = 5
+
+/** 硬上限。 */
+export const HARD_MAX_BATCH_DRAFT_SIZE = 10
+
+/** 提交批量生成任务。 */
+export function batchGenerateDrafts(
+  projectId: string,
+  payload: BatchGenerateDraftRequest,
+): Promise<ChapterBatchDraftRunResponse> {
+  return request.post(
+    `/projects/${projectId}/chapters/batch-generate-draft`,
+    payload,
+  )
+}
+
+/** 查询单个批次状态。 */
+export function getChapterBatchRun(
+  projectId: string,
+  runId: string,
+): Promise<ChapterBatchDraftRunResponse> {
+  return request.get(`/projects/${projectId}/chapter-batch-runs/${runId}`)
+}
+
+/** 列出最近批次（默认 10 条）。 */
+export function listChapterBatchRuns(
+  projectId: string,
+  take = 10,
+): Promise<ChapterBatchDraftRunResponse[]> {
+  return request.get(`/projects/${projectId}/chapter-batch-runs`, {
+    params: { take },
+  })
+}
+
+/** 请求中止：当前章节完成后停止后续。 */
+export function cancelChapterBatchRun(
+  projectId: string,
+  runId: string,
+): Promise<boolean> {
+  return request.post(
+    `/projects/${projectId}/chapter-batch-runs/${runId}/cancel`,
+  )
+}

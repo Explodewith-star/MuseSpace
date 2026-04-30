@@ -15,6 +15,9 @@ public static class FeatureFlagKeys
 
     /// <summary>原著导入后是否自动提取候选资产（角色/世界观/文风）。</summary>
     public const string AutoExtractNovelAssets = "auto-extract-novel-assets";
+
+    /// <summary>批量章节草稿生成总开关。</summary>
+    public const string BatchDraftEnabled = "batch-draft-enabled";
 }
 
 /// <summary>

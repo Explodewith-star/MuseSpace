@@ -18,6 +18,9 @@ public class MuseSpaceDbContext : DbContext
     public DbSet<PlotThread> PlotThreads => Set<PlotThread>();
     public DbSet<GenerationRecord> GenerationRecords => Set<GenerationRecord>();
 
+    // ── 章节批量草稿生成 ──────────────────────────────────────────────────────
+    public DbSet<ChapterBatchDraftRun> ChapterBatchDraftRuns => Set<ChapterBatchDraftRun>();
+
     // ── 用户认证 ───────────────────────────────────────────────────────────────
     public DbSet<User> Users => Set<User>();
     public DbSet<UserLlmPreference> UserLlmPreferences => Set<UserLlmPreference>();
@@ -286,6 +289,20 @@ public class MuseSpaceDbContext : DbContext
             entity.HasKey(e => e.Key);
             entity.Property(e => e.Key).HasMaxLength(100);
             entity.Property(e => e.Description).HasMaxLength(500);
+        });
+
+        // ── ChapterBatchDraftRun ──────────────────────────────────────────────
+        modelBuilder.Entity<ChapterBatchDraftRun>(entity =>
+        {
+            entity.ToTable("chapter_batch_draft_runs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.FailedChapterIds).HasColumnType("uuid[]").IsRequired(false);
+            entity.Property(e => e.ErrorMessage).HasColumnType("text");
+            entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => new { e.StoryProjectId, e.Status });
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

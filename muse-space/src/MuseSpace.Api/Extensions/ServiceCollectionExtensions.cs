@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using MuseSpace.Api.Hangfire;
 using MuseSpace.Api.Hubs;
 using MuseSpace.Application.Abstractions.Agents;
+using MuseSpace.Application.Abstractions.Export;
 using MuseSpace.Application.Abstractions.Features;
 using MuseSpace.Application.Abstractions.Llm;
 using MuseSpace.Application.Abstractions.Logging;
@@ -178,6 +179,9 @@ public static class ServiceCollectionExtensions
                 .WithScopedLifetime()
             .AddClasses(c => c.Where(t => t.Name.EndsWith("AppService")))
                 .AsSelf()
+                .WithScopedLifetime()
+            .AddClasses(c => c.AssignableTo<IChapterExportService>())
+                .AsImplementedInterfaces()
                 .WithScopedLifetime());
 
         // Scrutor：扫描 Infrastructure 程序集

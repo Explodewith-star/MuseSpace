@@ -6,6 +6,7 @@ import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AppCard from '@/components/base/AppCard.vue'
+import AppConfirm from '@/components/base/AppConfirm.vue'
 import { initChapterDetailState, CHAPTER_STATUS_LABELS, CHAPTER_STATUS_VARIANTS } from './hooks'
 
 const router = useRouter()
@@ -33,6 +34,12 @@ const {
   triggerGenerateDraft,
   autoPlanLoading,
   generateDraftLoading,
+  triggerAdoptDraft,
+  confirmAdoptDraftOverride,
+  cancelAdoptDraft,
+  adoptDraftLoading,
+  adoptDraftConfirmVisible,
+  adoptDraftConfirmInfo,
 } = initChapterDetailState()
 
 function goBack() {
@@ -282,6 +289,15 @@ function severityLabel(s?: string): string {
               <i class="i-lucide-wand-2" /> 生成本章草稿
             </AppButton>
             <AppButton
+              v-if="editingSection !== 'draft' && chapter.draftText"
+              variant="ghost"
+              size="sm"
+              :loading="adoptDraftLoading"
+              @click="triggerAdoptDraft"
+            >
+              <i class="i-lucide-check-check" /> 采用为定稿
+            </AppButton>
+            <AppButton
               v-if="editingSection !== 'draft'"
               variant="ghost"
               size="sm"
@@ -385,6 +401,20 @@ function severityLabel(s?: string): string {
         </div>
       </AppCard>
     </template>
+
+    <!-- 采用草稿为定稿：覆盖二次确认 -->
+    <AppConfirm
+      :model-value="adoptDraftConfirmVisible"
+      title="覆盖现有定稿？"
+      :message="adoptDraftConfirmInfo
+        ? `当前定稿已有 ${adoptDraftConfirmInfo.previousFinalLength} 字，将被草稿（${adoptDraftConfirmInfo.draftLength} 字）覆盖。此操作不会清空草稿，但会替换定稿全文。`
+        : '当前定稿已有内容，将被草稿覆盖。'"
+      confirm-text="确认覆盖"
+      variant="danger"
+      :loading="adoptDraftLoading"
+      @update:model-value="(v: boolean) => { if (!v) cancelAdoptDraft() }"
+      @confirm="confirmAdoptDraftOverride"
+    />
   </div>
 </template>
 

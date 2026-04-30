@@ -15,6 +15,15 @@ import { triggerOutlinePlan } from '@/api/suggestions'
 import { getSuggestions } from '@/api/suggestions'
 import { getCharacters } from '@/api/characters'
 import { getWorldRules } from '@/api/worldRules'
+import { exportProjectChapters, type ExportFormat } from '@/api/export'
+import {
+  batchGenerateDrafts,
+  cancelChapterBatchRun,
+  getChapterBatchRun,
+  DEFAULT_BATCH_DRAFT_SIZE,
+  HARD_MAX_BATCH_DRAFT_SIZE,
+  type ChapterBatchDraftRunResponse,
+} from '@/api/chapters'
 import { useAgentProgress } from '@/composables/useAgentProgress'
 import { useToast } from '@/composables/useToast'
 
@@ -102,6 +111,52 @@ async function submitPlan() {
   }
 }
 
+// ── 一键导出 ────────────────────────────────────────────────
+const exportModalOpen = ref(false)
+const exportLoading = ref(false)
+const exportForm = reactive({
+  format: 'md' as ExportFormat,
+  rangeMode: 'all' as 'all' | 'custom',
+  fromNumber: 1,
+  toNumber: 1,
+  onlyFinal: true,
+  includeDraft: false,
+})
+
+const finalChapterCount = computed(() => chapters.value.filter((c) => c.status === 3).length)
+
+function openExportModal() {
+  exportForm.format = 'md'
+  exportForm.rangeMode = 'all'
+  exportForm.onlyFinal = true
+  exportForm.includeDraft = false
+  if (chapters.value.length > 0) {
+    exportForm.fromNumber = chapters.value[0].number
+    exportForm.toNumber = chapters.value[chapters.value.length - 1].number
+  }
+  exportModalOpen.value = true
+}
+
+async function submitExport() {
+  exportLoading.value = true
+  try {
+    await exportProjectChapters(projectId, {
+      format: exportForm.format,
+      from: exportForm.rangeMode === 'custom' ? exportForm.fromNumber : undefined,
+      to: exportForm.rangeMode === 'custom' ? exportForm.toNumber : undefined,
+      onlyFinal: exportForm.onlyFinal,
+      includeDraft: !exportForm.onlyFinal && exportForm.includeDraft,
+    })
+    exportModalOpen.value = false
+    toast.success('已开始下载')
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '导出失败'
+    toast.error(msg)
+  } finally {
+    exportLoading.value = false
+  }
+}
+
 // ── SignalR 进度订阅 ──────────────────────────────────────────
 const { latestEvent, joinProject, leaveProject } = useAgentProgress()
 
@@ -110,6 +165,132 @@ const outlineStage = computed(() => {
   if (!e || e.taskType !== 'outline') return null
   return e
 })
+
+// ── A3 批量生成草稿 ─────────────────────────────────────────
+const batchModalOpen = ref(false)
+const batchSubmitLoading = ref(false)
+const batchForm = reactive({
+  fromNumber: 1,
+  toNumber: 1,
+  skipChaptersWithDraft: false,
+})
+const activeBatchRun = ref<ChapterBatchDraftRunResponse | null>(null)
+let batchPollTimer: ReturnType<typeof setInterval> | null = null
+const cancelBatchLoading = ref(false)
+
+const batchSize = computed(() => {
+  const n = batchForm.toNumber - batchForm.fromNumber + 1
+  return Number.isFinite(n) && n > 0 ? n : 0
+})
+
+const batchProgressPercent = computed(() => {
+  const r = activeBatchRun.value
+  if (!r || r.totalCount === 0) return 0
+  return Math.min(
+    100,
+    Math.round(((r.completedCount + r.failedCount + r.skippedCount) / r.totalCount) * 100),
+  )
+})
+
+const isBatchRunning = computed(() => {
+  const s = activeBatchRun.value?.status
+  return s === 'Pending' || s === 'Running'
+})
+
+const BATCH_STATUS_LABELS: Record<ChapterBatchDraftRunResponse['status'], string> = {
+  Pending: '排队中',
+  Running: '生成中',
+  Completed: '已完成',
+  PartiallyFailed: '部分失败',
+  Cancelled: '已中止',
+  Failed: '失败',
+}
+
+function openBatchModal() {
+  if (chapters.value.length === 0) return
+  const first = chapters.value[0].number
+  const planned = chapters.value.find((c) => c.status === 0)
+  const start = planned ? planned.number : first
+  batchForm.fromNumber = start
+  batchForm.toNumber = Math.min(
+    chapters.value[chapters.value.length - 1].number,
+    start + DEFAULT_BATCH_DRAFT_SIZE - 1,
+  )
+  batchForm.skipChaptersWithDraft = false
+  batchModalOpen.value = true
+}
+
+function startBatchPolling(runId: string) {
+  stopBatchPolling()
+  batchPollTimer = setInterval(async () => {
+    try {
+      const r = await getChapterBatchRun(projectId, runId)
+      activeBatchRun.value = r
+      if (!isBatchRunning.value) {
+        stopBatchPolling()
+        // 完成后刷新章节列表（草稿字段会变化）
+        const evtMap: Record<string, () => void> = {
+          Completed: () => toast.success(`批量生成完成：${r.completedCount}/${r.totalCount}`),
+          PartiallyFailed: () =>
+            toast.warning(`部分完成：成功 ${r.completedCount}，失败 ${r.failedCount}`),
+          Cancelled: () => toast.success(`已中止：成功 ${r.completedCount}/${r.totalCount}`),
+          Failed: () => toast.error(r.errorMessage ?? '批量生成失败'),
+        }
+        evtMap[r.status]?.()
+      }
+    } catch {
+      stopBatchPolling()
+    }
+  }, 3000)
+}
+
+function stopBatchPolling() {
+  if (batchPollTimer) {
+    clearInterval(batchPollTimer)
+    batchPollTimer = null
+  }
+}
+
+async function submitBatch() {
+  if (batchSize.value <= 0) {
+    toast.error('请填写有效的章节范围')
+    return
+  }
+  if (batchSize.value > HARD_MAX_BATCH_DRAFT_SIZE) {
+    toast.error(`单批最多 ${HARD_MAX_BATCH_DRAFT_SIZE} 章`)
+    return
+  }
+  batchSubmitLoading.value = true
+  try {
+    const run = await batchGenerateDrafts(projectId, {
+      fromNumber: batchForm.fromNumber,
+      toNumber: batchForm.toNumber,
+      skipChaptersWithDraft: batchForm.skipChaptersWithDraft,
+    })
+    activeBatchRun.value = run
+    batchModalOpen.value = false
+    toast.success(`已提交批量生成任务（${run.totalCount} 章）`)
+    startBatchPolling(run.id)
+  } catch {
+    // 全局拦截器已 toast
+  } finally {
+    batchSubmitLoading.value = false
+  }
+}
+
+async function cancelBatch() {
+  const r = activeBatchRun.value
+  if (!r) return
+  cancelBatchLoading.value = true
+  try {
+    await cancelChapterBatchRun(projectId, r.id)
+    toast.success('已请求中止，当前章节完成后停止后续')
+  } catch {
+    // ignore
+  } finally {
+    cancelBatchLoading.value = false
+  }
+}
 
 const stageLabels: Record<string, string> = {
   started: '正在收集项目设定...',
@@ -134,9 +315,10 @@ onMounted(() => {
   joinProject(projectId)
   refreshPendingOutline()
 })
-onUnmounted(() => leaveProject(projectId))
-
-// 大纲生成完成后提示跳转
+onUnmounted(() => {
+  leaveProject(projectId)
+  stopBatchPolling()
+})
 watch(outlineStage, (e) => {
   if (e?.stage === 'done') {
     toast.success(e.summary ?? '大纲已生成，前往建议中心查看')
@@ -162,6 +344,27 @@ watch(outlineStage, (e) => {
         >
           <i class="i-lucide-list-ordered" />
           重排编号
+        </AppButton>
+        <AppButton
+          v-if="chapters.length > 0"
+          variant="ghost"
+          size="sm"
+          title="导出已定稿章节为 md / txt"
+          @click="openExportModal"
+        >
+          <i class="i-lucide-download" />
+          导出
+        </AppButton>
+        <AppButton
+          v-if="chapters.length > 0"
+          variant="ghost"
+          size="sm"
+          :disabled="isBatchRunning"
+          :title="isBatchRunning ? '当前已有进行中的批量任务' : '一次最多生成 10 章草稿'"
+          @click="openBatchModal"
+        >
+          <i class="i-lucide-layers" />
+          批量生成草稿
         </AppButton>
         <AppButton variant="ghost" size="sm" @click="openPlanModal">
           <i class="i-lucide-sparkles" />
@@ -195,6 +398,57 @@ watch(outlineStage, (e) => {
       <AppButton size="sm" @click="router.push(`/projects/${projectId}/outline`)">
         前往查看
       </AppButton>
+    </div>
+
+    <!-- A3 批量生成草稿进度面板 -->
+    <div v-if="activeBatchRun" class="batch-progress-panel" :data-status="activeBatchRun.status">
+      <div class="batch-progress-header">
+        <i v-if="isBatchRunning" class="i-lucide-loader-2 spin" />
+        <i v-else-if="activeBatchRun.status === 'Completed'" class="i-lucide-check-circle-2" />
+        <i v-else-if="activeBatchRun.status === 'Cancelled'" class="i-lucide-octagon-pause" />
+        <i v-else class="i-lucide-alert-triangle" />
+        <span class="batch-progress-title">
+          批量生成草稿 · 第 {{ activeBatchRun.fromNumber }} – {{ activeBatchRun.toNumber }} 章
+          <span class="batch-progress-status">
+            {{ BATCH_STATUS_LABELS[activeBatchRun.status] }}
+          </span>
+        </span>
+        <div class="batch-progress-actions">
+          <AppButton
+            v-if="isBatchRunning"
+            size="sm"
+            variant="ghost"
+            :loading="cancelBatchLoading"
+            :disabled="activeBatchRun.cancelRequested"
+            @click="cancelBatch"
+          >
+            {{ activeBatchRun.cancelRequested ? '已请求中止...' : '中止' }}
+          </AppButton>
+          <AppButton v-else size="sm" variant="ghost" @click="activeBatchRun = null">
+            关闭
+          </AppButton>
+        </div>
+      </div>
+      <div class="batch-progress-bar-wrap">
+        <div class="batch-progress-bar" :style="{ width: batchProgressPercent + '%' }" />
+      </div>
+      <div class="batch-progress-stats">
+        <span
+          >已完成 <strong>{{ activeBatchRun.completedCount }}</strong></span
+        >
+        <span v-if="activeBatchRun.failedCount > 0" class="stat-failed">
+          失败 <strong>{{ activeBatchRun.failedCount }}</strong>
+        </span>
+        <span v-if="activeBatchRun.skippedCount > 0">
+          已跳过 <strong>{{ activeBatchRun.skippedCount }}</strong>
+        </span>
+        <span
+          >共 <strong>{{ activeBatchRun.totalCount }}</strong> 章</span
+        >
+      </div>
+      <p v-if="activeBatchRun.errorMessage" class="batch-progress-error">
+        {{ activeBatchRun.errorMessage }}
+      </p>
     </div>
 
     <!-- 骨架屏 -->
@@ -360,6 +614,157 @@ watch(outlineStage, (e) => {
         <AppButton :loading="planLoading" :disabled="!planForm.goal.trim()" @click="submitPlan">
           <i class="i-lucide-sparkles" />
           开始规划
+        </AppButton>
+      </template>
+    </AppModal>
+
+    <!-- 一键导出 Modal -->
+    <AppModal v-model="exportModalOpen" title="导出章节" width="520px">
+      <div class="export-form">
+        <div class="export-section">
+          <label class="export-label">导出格式</label>
+          <div class="export-options">
+            <button
+              type="button"
+              :class="['export-option', { active: exportForm.format === 'md' }]"
+              @click="exportForm.format = 'md'"
+            >
+              <i class="i-lucide-file-text" /> Markdown (.md)
+              <span class="option-desc">通用、保留章节层次</span>
+            </button>
+            <button
+              type="button"
+              :class="['export-option', { active: exportForm.format === 'txt' }]"
+              @click="exportForm.format = 'txt'"
+            >
+              <i class="i-lucide-file" /> 纯文本 (.txt)
+              <span class="option-desc">兼容 Kindle / 简单阅读器</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="export-section">
+          <label class="export-label">章节范围</label>
+          <div class="export-options export-options--row">
+            <button
+              type="button"
+              :class="['export-option', { active: exportForm.rangeMode === 'all' }]"
+              @click="exportForm.rangeMode = 'all'"
+            >
+              全部章节
+            </button>
+            <button
+              type="button"
+              :class="['export-option', { active: exportForm.rangeMode === 'custom' }]"
+              @click="exportForm.rangeMode = 'custom'"
+            >
+              自定义
+            </button>
+          </div>
+          <div v-if="exportForm.rangeMode === 'custom'" class="range-inputs">
+            <label class="range-input-wrap">
+              <span>起始章号</span>
+              <input
+                v-model.number="exportForm.fromNumber"
+                type="number"
+                min="1"
+                class="range-input"
+              />
+            </label>
+            <label class="range-input-wrap">
+              <span>结束章号</span>
+              <input
+                v-model.number="exportForm.toNumber"
+                type="number"
+                min="1"
+                class="range-input"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div class="export-section">
+          <label class="export-checkbox">
+            <input v-model="exportForm.onlyFinal" type="checkbox" />
+            <span>仅导出已定稿章节（推荐）</span>
+          </label>
+          <label v-if="!exportForm.onlyFinal" class="export-checkbox">
+            <input v-model="exportForm.includeDraft" type="checkbox" />
+            <span>未定稿时使用草稿（带 [草稿] 前缀）</span>
+          </label>
+        </div>
+
+        <p class="export-tip">
+          <i class="i-lucide-info" />
+          当前共 <strong>{{ chapters.length }}</strong> 章，已定稿
+          <strong>{{ finalChapterCount }}</strong> 章。
+        </p>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="exportModalOpen = false">取消</AppButton>
+        <AppButton :loading="exportLoading" @click="submitExport">
+          <i class="i-lucide-download" />
+          下载
+        </AppButton>
+      </template>
+    </AppModal>
+
+    <!-- A3 批量生成草稿 Modal -->
+    <AppModal v-model="batchModalOpen" title="批量生成章节草稿" width="480px">
+      <div class="batch-form">
+        <div class="batch-section">
+          <label class="batch-label">章节范围</label>
+          <div class="range-inputs">
+            <label class="range-input-wrap">
+              <span>起始章号</span>
+              <input
+                v-model.number="batchForm.fromNumber"
+                type="number"
+                min="1"
+                class="range-input"
+              />
+            </label>
+            <label class="range-input-wrap">
+              <span>结束章号</span>
+              <input
+                v-model.number="batchForm.toNumber"
+                type="number"
+                min="1"
+                class="range-input"
+              />
+            </label>
+          </div>
+          <p
+            class="batch-tip"
+            :class="{ 'batch-tip--error': batchSize > HARD_MAX_BATCH_DRAFT_SIZE }"
+          >
+            <i class="i-lucide-info" />
+            将生成 <strong>{{ batchSize }}</strong> 章，单批最多
+            <strong>{{ HARD_MAX_BATCH_DRAFT_SIZE }}</strong> 章。
+          </p>
+        </div>
+
+        <div class="batch-section">
+          <label class="export-checkbox">
+            <input v-model="batchForm.skipChaptersWithDraft" type="checkbox" />
+            <span>跳过已有草稿的章节</span>
+          </label>
+        </div>
+
+        <p class="batch-tip">
+          <i class="i-lucide-clock" />
+          顺序串行生成，单章上限 5 分钟、整批上限 30 分钟；可中途中止。
+        </p>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="batchModalOpen = false">取消</AppButton>
+        <AppButton
+          :loading="batchSubmitLoading"
+          :disabled="batchSize <= 0 || batchSize > HARD_MAX_BATCH_DRAFT_SIZE"
+          @click="submitBatch"
+        >
+          <i class="i-lucide-play" />
+          开始生成
         </AppButton>
       </template>
     </AppModal>
@@ -635,5 +1040,212 @@ watch(outlineStage, (e) => {
 .context-warn {
   color: var(--color-accent);
   font-style: italic;
+}
+
+/* ── 导出 Modal ───────────────────────────────────── */
+.export-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.export-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-label {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.export-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.export-options--row {
+  grid-template-columns: 1fr 1fr;
+}
+
+.export-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.export-option:hover {
+  border-color: var(--color-primary);
+}
+
+.export-option.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft, rgba(59, 130, 246, 0.08));
+  color: var(--color-primary);
+}
+
+.option-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.range-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.range-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.range-input {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.range-input:focus {
+  border-color: var(--color-primary);
+}
+
+.export-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  margin-top: 4px;
+}
+
+.export-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* A3 批量生成草稿 */
+.batch-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.batch-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.batch-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.batch-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+.batch-tip--error {
+  color: var(--color-danger, #d63838);
+}
+
+.batch-progress-panel {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elev);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.batch-progress-panel[data-status='Failed'],
+.batch-progress-panel[data-status='PartiallyFailed'] {
+  border-color: var(--color-warning, #d97706);
+}
+.batch-progress-panel[data-status='Completed'] {
+  border-color: var(--color-success, #16a34a);
+}
+.batch-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.batch-progress-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.batch-progress-status {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+.batch-progress-actions {
+  display: flex;
+  gap: 6px;
+}
+.batch-progress-bar-wrap {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-bg-muted, rgba(0, 0, 0, 0.08));
+  overflow: hidden;
+}
+.batch-progress-bar {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.4s ease;
+}
+.batch-progress-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.batch-progress-stats strong {
+  color: var(--color-text-primary);
+}
+.batch-progress-stats .stat-failed {
+  color: var(--color-danger, #d63838);
+}
+.batch-progress-stats .stat-failed strong {
+  color: var(--color-danger, #d63838);
+}
+.batch-progress-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-danger, #d63838);
 }
 </style>

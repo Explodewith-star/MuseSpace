@@ -108,4 +108,42 @@ public class ChaptersController : ControllerBase
             job => job.ExecuteAsync(projectId, chapterId, userId));
         return Ok(ApiResponse<string>.Ok("已提交章节草稿生成任务"));
     }
+
+    /// <summary>
+    /// 一键将草稿采用为定稿：FinalText = DraftText，Status 升至 Finalized；保留 DraftText 用于对照。
+    /// 若定稿已有内容且未指定 OverrideExisting=true，返回 409，前端应二次确认后重试。
+    /// </summary>
+    [HttpPost("{chapterId:guid}/adopt-draft")]
+    public async Task<ActionResult<ApiResponse<AdoptDraftResponse>>> AdoptDraft(
+        Guid projectId,
+        Guid chapterId,
+        [FromBody] AdoptDraftRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var (response, failureReason) = await _service.AdoptDraftAsync(
+            projectId, chapterId, request?.OverrideExisting ?? false, cancellationToken);
+
+        if (response is null && failureReason is null)
+        {
+            return NotFound(ApiResponse<AdoptDraftResponse>.Fail("Chapter not found"));
+        }
+
+        if (failureReason == AdoptDraftFailureReasons.DraftEmpty)
+        {
+            return BadRequest(ApiResponse<AdoptDraftResponse>.Fail("草稿为空，无法采用"));
+        }
+
+        if (failureReason == AdoptDraftFailureReasons.ExistingFinalConflict)
+        {
+            // 409 + 携带数据，前端可读取 PreviousFinalLength / DraftLength 弹二次确认
+            return Conflict(new ApiResponse<AdoptDraftResponse>
+            {
+                Success = false,
+                Data = response,
+                ErrorMessage = "定稿已有内容，请确认是否覆盖",
+            });
+        }
+
+        return Ok(ApiResponse<AdoptDraftResponse>.Ok(response!));
+    }
 }

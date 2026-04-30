@@ -26,7 +26,7 @@
 - D3-1 大纲规划：✅ 主干完成
 - D3-2 菜单 Agent 化与统一入口：✅ 主干完成（6 个 agentType + SignalR 重连恢复）
 - D3-3 导入后自动提取流水线：✅ 已完成
-- D4-1 伏笔追踪与风格 Reviewer：✅ 主干完成（PlotThread 模型 + Agent + 看板 + 草稿后自动扫描）
+- D4-1 伏笔追踪与风格 Reviewer：✅ 主干完成（PlotThread 模型 + Agent + 看板 + 草稿后自动扫描 + 过期提醒）
 - D4-D2 AgentRun 可观测面板：✅ 已完成
 - D4-D3 FeatureFlag 控制台：✅ 已完成
 
@@ -287,7 +287,7 @@
 - 伏笔能被记录、提示、回收
 - Reviewer 可稳定产出可操作建议
 
-状态：✅ 主干完成。`PlotThread` 实体 + `plot_threads` 表（`PlotThreadSchemaInitializerHostedService` 幂等建表）+ `IPlotThreadRepository` + CRUD Controller + 4 列看板 UI + `PlotThreadTrackingAgentDefinition` & Job（草稿后自动扫描 + 手动扫描入口）均已上线。后续可考虑伏笔过期提醒、与大纲交叉验证等深化项。
+状态：✅ 主干完成。`PlotThread` 实体 + `plot_threads` 表（`PlotThreadSchemaInitializerHostedService` 幂等建表）+ `IPlotThreadRepository` + CRUD Controller + 4 列看板 UI + `PlotThreadTrackingAgentDefinition` & Job（草稿后自动扫描 + 手动扫描入口）+ `ExpectedResolveByChapterNumber` 过期提醒（看板顶部 stale banner + 卡片标签）均已上线。后续可继续深化：与大纲交叉验证、PlotThread / 角色 / 章节 三者双向跳转。
 
 ### D4-2 AgentRun 可观测面板
 

@@ -88,6 +88,39 @@ public sealed class PlotThreadSchemaInitializerHostedService : IHostedService
                     "ALTER TABLE plot_threads ADD COLUMN IF NOT EXISTS \"ExpectedResolveByChapterNumber\" int",
                     ct);
             }, cancellationToken);
+
+            // 阶段 C+ A3：批量章节草稿生成运行记录表。
+            await runner.RunOnceAsync("2026_04_30_chapter_batch_draft_runs", async (ctx, ct) =>
+            {
+                const string sql = """
+                    CREATE TABLE IF NOT EXISTS chapter_batch_draft_runs (
+                        "Id" uuid PRIMARY KEY,
+                        "StoryProjectId" uuid NOT NULL REFERENCES story_projects("Id") ON DELETE CASCADE,
+                        "UserId" uuid,
+                        "FromNumber" int NOT NULL,
+                        "ToNumber" int NOT NULL,
+                        "SkipChaptersWithDraft" boolean NOT NULL DEFAULT false,
+                        "TotalCount" int NOT NULL DEFAULT 0,
+                        "CompletedCount" int NOT NULL DEFAULT 0,
+                        "FailedCount" int NOT NULL DEFAULT 0,
+                        "SkippedCount" int NOT NULL DEFAULT 0,
+                        "FailedChapterIds" uuid[],
+                        "CurrentChapterId" uuid,
+                        "Status" int NOT NULL DEFAULT 0,
+                        "CancelRequested" boolean NOT NULL DEFAULT false,
+                        "CreatedAt" timestamptz NOT NULL DEFAULT now(),
+                        "StartedAt" timestamptz,
+                        "FinishedAt" timestamptz,
+                        "ErrorMessage" text
+                    );
+
+                    CREATE INDEX IF NOT EXISTS ix_chapter_batch_draft_runs_project
+                        ON chapter_batch_draft_runs("StoryProjectId");
+                    CREATE INDEX IF NOT EXISTS ix_chapter_batch_draft_runs_project_status
+                        ON chapter_batch_draft_runs("StoryProjectId", "Status");
+                    """;
+                await ctx.Database.ExecuteSqlRawAsync(sql, ct);
+            }, cancellationToken);
         }
         catch (Exception ex)
         {

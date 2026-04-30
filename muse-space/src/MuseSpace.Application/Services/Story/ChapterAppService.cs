@@ -2,6 +2,7 @@ using Mapster;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Contracts.Chapters;
 using MuseSpace.Domain.Entities;
+using MuseSpace.Domain.Enums;
 namespace MuseSpace.Application.Services.Story;
 
 public sealed class ChapterAppService
@@ -76,5 +77,60 @@ public sealed class ChapterAppService
 
         await _repository.SaveAsync(projectId, existing, cancellationToken);
         return existing.Adapt<ChapterResponse>();
+    }
+
+    /// <summary>
+    /// 一键将 DraftText 采用为 FinalText：
+    /// - 草稿为空 → 返回 (null, DraftEmpty)。
+    /// - 定稿已有内容且未指定覆盖 → 返回 (null, ExistingFinalConflict)，前端弹二次确认。
+    /// - 否则写入 FinalText，状态升至 Finalized（若未到此级），保留 DraftText 用于对照。
+    /// </summary>
+    public async Task<(AdoptDraftResponse? Response, string? FailureReason)> AdoptDraftAsync(
+        Guid projectId,
+        Guid chapterId,
+        bool overrideExisting,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await _repository.GetByIdAsync(projectId, chapterId, cancellationToken);
+        if (existing is null) return (null, null);
+
+        var draftLength = existing.DraftText?.Length ?? 0;
+        var previousFinalLength = existing.FinalText?.Length ?? 0;
+
+        if (string.IsNullOrWhiteSpace(existing.DraftText))
+        {
+            return (null, AdoptDraftFailureReasons.DraftEmpty);
+        }
+
+        if (previousFinalLength > 0 && !overrideExisting)
+        {
+            return (
+                new AdoptDraftResponse
+                {
+                    Adopted = false,
+                    DraftLength = draftLength,
+                    PreviousFinalLength = previousFinalLength,
+                    FinalLength = previousFinalLength,
+                },
+                AdoptDraftFailureReasons.ExistingFinalConflict);
+        }
+
+        existing.FinalText = existing.DraftText;
+        if (existing.Status < ChapterStatus.Finalized)
+        {
+            existing.Status = ChapterStatus.Finalized;
+        }
+
+        await _repository.SaveAsync(projectId, existing, cancellationToken);
+
+        return (
+            new AdoptDraftResponse
+            {
+                Adopted = true,
+                DraftLength = draftLength,
+                PreviousFinalLength = previousFinalLength,
+                FinalLength = existing.FinalText?.Length ?? 0,
+            },
+            null);
     }
 }

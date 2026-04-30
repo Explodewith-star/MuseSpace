@@ -5,6 +5,8 @@ import {
   updateChapter,
   autoPlanChapter,
   generateChapterDraft,
+  adoptChapterDraft,
+  type AdoptDraftResponse,
 } from '@/api/chapters'
 import { getCharacters } from '@/api/characters'
 import { getSuggestions } from '@/api/suggestions'
@@ -54,6 +56,11 @@ export function initChapterDetailState() {
   const generateDraftLoading = ref(false)
   let autoPlanTimer: ReturnType<typeof setTimeout> | null = null
   let generateDraftTimer: ReturnType<typeof setTimeout> | null = null
+
+  // ── 一键采用草稿为定稿 ───────────────────────────────────────
+  const adoptDraftLoading = ref(false)
+  const adoptDraftConfirmVisible = ref(false)
+  const adoptDraftConfirmInfo = ref<AdoptDraftResponse | null>(null)
 
   // 本地编辑表单
   const metaForm = reactive({ title: '', goal: '', summary: '', status: 0 })
@@ -194,6 +201,49 @@ export function initChapterDetailState() {
     }
   }
 
+  // ── 采用草稿为定稿 ──────────────────────────────────────────
+  async function adoptDraft(overrideExisting: boolean) {
+    if (!chapter.value) return
+    if (adoptDraftLoading.value) return
+    if (!chapter.value.draftText || chapter.value.draftText.trim().length === 0) {
+      toast.error('草稿为空，无法采用')
+      return
+    }
+    adoptDraftLoading.value = true
+    try {
+      const res = await adoptChapterDraft(projectId.value, chapterId.value, overrideExisting)
+      // 成功：刷新章节、关闭确认框
+      adoptDraftConfirmVisible.value = false
+      adoptDraftConfirmInfo.value = null
+      await load()
+      toast.success(`已采用为定稿（${res.finalLength} 字）`)
+    } catch (err: unknown) {
+      // 409：定稿已有内容，弹二次确认
+      const e = err as { response?: { status?: number; data?: { data?: AdoptDraftResponse } } }
+      if (e.response?.status === 409 && e.response.data?.data) {
+        adoptDraftConfirmInfo.value = e.response.data.data
+        adoptDraftConfirmVisible.value = true
+      } else {
+        toast.error('采用失败')
+      }
+    } finally {
+      adoptDraftLoading.value = false
+    }
+  }
+
+  function triggerAdoptDraft() {
+    void adoptDraft(false)
+  }
+
+  function confirmAdoptDraftOverride() {
+    void adoptDraft(true)
+  }
+
+  function cancelAdoptDraft() {
+    adoptDraftConfirmVisible.value = false
+    adoptDraftConfirmInfo.value = null
+  }
+
   watch(agentProgress.latestEvent, (ev) => {
     if (!ev) return
     if (ev.taskType === 'chapter-auto-plan') {
@@ -276,6 +326,12 @@ export function initChapterDetailState() {
     triggerGenerateDraft,
     autoPlanLoading,
     generateDraftLoading,
+    triggerAdoptDraft,
+    confirmAdoptDraftOverride,
+    cancelAdoptDraft,
+    adoptDraftLoading,
+    adoptDraftConfirmVisible,
+    adoptDraftConfirmInfo,
     statusLabel,
     CHAPTER_STATUS_LABELS,
   }
