@@ -12,4 +12,6 @@ public interface IChapterRepository
     Task<int> BatchDeleteAsync(Guid projectId, IEnumerable<Guid> chapterIds, CancellationToken cancellationToken = default);
     /// <summary>删除由指定大纲建议导入的所有章节。</summary>
     Task<int> DeleteBySourceSuggestionIdAsync(Guid suggestionId, CancellationToken cancellationToken = default);
+    /// <summary>按 <paramref name="orderedChapterIds"/> 顺序重排章节 Number，从 <paramref name="startNumber"/> 起。返回实际更新数量。</summary>
+    Task<int> BatchReorderAsync(Guid projectId, IReadOnlyList<Guid> orderedChapterIds, int startNumber, CancellationToken cancellationToken = default);
 }

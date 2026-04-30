@@ -47,6 +47,17 @@ public sealed class ChapterAppService
     public async Task<int> BatchDeleteAsync(Guid projectId, IEnumerable<Guid> chapterIds, CancellationToken cancellationToken = default)
         => await _repository.BatchDeleteAsync(projectId, chapterIds, cancellationToken);
 
+    /// <summary>
+    /// 批量重排章节 Number。<paramref name="orderedChapterIds"/> 顺序决定目标编号（首项 → <paramref name="startNumber"/>）。
+    /// 用于消除"删除章节后编号空洞"。返回实际更新数量。
+    /// </summary>
+    public async Task<int> BatchReorderAsync(
+        Guid projectId,
+        IReadOnlyList<Guid> orderedChapterIds,
+        int startNumber = 1,
+        CancellationToken cancellationToken = default)
+        => await _repository.BatchReorderAsync(projectId, orderedChapterIds, startNumber, cancellationToken);
+
     public async Task<ChapterResponse?> UpdateAsync(Guid projectId, Guid chapterId, UpdateChapterRequest request, CancellationToken cancellationToken = default)
     {
         var existing = await _repository.GetByIdAsync(projectId, chapterId, cancellationToken);

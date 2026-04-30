@@ -7,19 +7,35 @@ import type {
 } from '@/types/models'
 
 export const CATEGORY_LABELS: Record<string, string> = {
-  Consistency: '世界观一致性',
+  // 资产类
   Character: '角色',
-  Outline: '大纲规划',
   WorldRule: '世界观规则',
+  Outline: '大纲规划',
   StyleProfile: '文风画像',
+  // 一致性类（细分）
+  WorldRuleConsistency: '世界观冲突',
+  CharacterConsistency: '角色冲突',
+  StyleConsistency: '文风偏离',
+  OutlineConsistency: '大纲冲突',
+  // 通知类
+  ProjectSummary: '项目摘要',
+  PlotThread: '伏笔追踪',
+  // 历史遗留（数据迁移前）
+  Consistency: '一致性（旧）',
 }
 
 export const CATEGORY_ICONS: Record<string, string> = {
-  Consistency: 'i-lucide-shield-alert',
   Character: 'i-lucide-user-check',
-  Outline: 'i-lucide-list-tree',
   WorldRule: 'i-lucide-globe',
+  Outline: 'i-lucide-list-tree',
   StyleProfile: 'i-lucide-pen-tool',
+  WorldRuleConsistency: 'i-lucide-shield-alert',
+  CharacterConsistency: 'i-lucide-user-x',
+  StyleConsistency: 'i-lucide-paintbrush',
+  OutlineConsistency: 'i-lucide-git-branch',
+  ProjectSummary: 'i-lucide-clipboard-list',
+  PlotThread: 'i-lucide-spline',
+  Consistency: 'i-lucide-shield-alert',
 }
 
 export const STATUS_LABELS: Record<SuggestionStatus, string> = {

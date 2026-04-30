@@ -2,8 +2,10 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using MuseSpace.Api.Hangfire;
 using MuseSpace.Api.Hubs;
 using MuseSpace.Application.Abstractions.Agents;
+using MuseSpace.Application.Abstractions.Features;
 using MuseSpace.Application.Abstractions.Llm;
 using MuseSpace.Application.Abstractions.Logging;
 using MuseSpace.Application.Abstractions.Memory;
@@ -16,6 +18,7 @@ using MuseSpace.Application.Services;
 using MuseSpace.Application.Services.Agents;
 using MuseSpace.Application.Services.Drafting;
 using MuseSpace.Infrastructure.Agents;
+using MuseSpace.Infrastructure.Features;
 using MuseSpace.Infrastructure.Llm;
 using MuseSpace.Infrastructure.Logging;
 using MuseSpace.Infrastructure.Memory;
@@ -122,10 +125,20 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IImportProgressNotifier, SignalRImportProgressNotifier>();
 
         // ── Agent progress notifier (SignalR-backed) ─────────────────────────────
+        services.AddSingleton<IActiveAgentTaskRegistry, InMemoryActiveAgentTaskRegistry>();
         services.AddScoped<IAgentProgressNotifier, SignalRAgentProgressNotifier>();
+
+        // ── 启动一次性数据迁移（拆分老 Consistency 类目） ──────────────────────
+        services.AddHostedService<LegacyConsistencyCategoryMigrationHostedService>();
+        // ── 启动 idempotent 建表（plot_threads） ───────────────────────────────
+        services.AddHostedService<PlotThreadSchemaInitializerHostedService>();
 
         // 生成日志（不再写入 JSON 文件，仅 Serilog 结构化日志）
         services.AddSingleton<IGenerationLogService, GenerationLogService>();
+
+        // ── 功能开关（D4-D3） ───────────────────────────────────────────────────
+        services.AddMemoryCache();
+        services.AddScoped<IFeatureFlagService, FeatureFlagService>();
 
         // ── Agent 运行时 ─────────────────────────────────────────────────────
         // Agent 定义注册（新增 Agent 只需追加一行）
@@ -137,6 +150,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(StyleProfileExtractionAgentDefinition.Create());
         services.AddSingleton(ChapterPlanGenerationAgentDefinition.Create());
         services.AddSingleton(StyleConsistencyAgentDefinition.Create());
+        services.AddSingleton(ProjectSummaryAgentDefinition.Create());
+        services.AddSingleton(PlotThreadTrackingAgentDefinition.Create());
         // Agent 工具注册（P0 暂无工具，P1 扩展时通过 Scrutor 或手动注册 IAgentTool）
         // AgentRunner（Scoped：依赖 DbContext + ILlmClient 都是 Scoped）
         services.AddScoped<IAgentRunner, AgentRunner>();

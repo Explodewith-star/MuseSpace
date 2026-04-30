@@ -47,10 +47,14 @@ public sealed class ConsistencyCheckJob
     /// <param name="projectId">项目 ID。</param>
     /// <param name="draftText">待检查的草稿文本。</param>
     /// <param name="userId">触发用户 ID（可选）。</param>
-    public async Task ExecuteAsync(Guid projectId, string draftText, Guid? userId)
+    /// <param name="sourceLabel">冲突来源标签，用于建议标题前缀（如"大纲"，默认"世界观"）。</param>
+    /// <param name="category">建议类目；默认 WorldRuleConsistency；大纲触发时传 OutlineConsistency。</param>
+    public async Task ExecuteAsync(Guid projectId, string draftText, Guid? userId, string? sourceLabel = null, string? category = null)
     {
-        _logger.LogInformation("[ConsistencyCheck] Start for project {ProjectId}, text length {Length}",
-            projectId, draftText.Length);
+        var prefix = string.IsNullOrWhiteSpace(sourceLabel) ? "世界观" : sourceLabel!;
+        var cat = string.IsNullOrWhiteSpace(category) ? SuggestionCategories.WorldRuleConsistency : category!;
+        _logger.LogInformation("[ConsistencyCheck] Start for project {ProjectId}, source={Source}, text length {Length}",
+            projectId, prefix, draftText.Length);
 
         // 加载用户 LLM 偏好（Hangfire 无 HTTP 上下文，需手动应用）
         await ApplyUserLlmPreferenceAsync(userId);
@@ -137,8 +141,8 @@ public sealed class ConsistencyCheckJob
             await _suggestionService.CreateAsync(
                 agentRunId: agentContext.RunId,
                 storyProjectId: projectId,
-                category: SuggestionCategories.Consistency,
-                title: $"世界观冲突：{item.RuleName}",
+                category: cat,
+                title: $"{prefix}冲突：{item.RuleName}",
                 contentJson: contentJson);
         }
 

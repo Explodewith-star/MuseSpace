@@ -67,4 +67,36 @@ public sealed class EfChapterRepository : IChapterRepository
         => await _db.Chapters
                     .Where(c => c.SourceSuggestionId == suggestionId)
                     .ExecuteDeleteAsync(cancellationToken);
+
+    public async Task<int> BatchReorderAsync(Guid projectId, IReadOnlyList<Guid> orderedChapterIds, int startNumber, CancellationToken cancellationToken = default)
+    {
+        if (orderedChapterIds.Count == 0) return 0;
+
+        // 仅加载本项目内、出现在列表中的章节，避免越权改其他项目
+        var idSet = orderedChapterIds.ToHashSet();
+        var chapters = await _db.Chapters
+            .Where(c => c.StoryProjectId == projectId && idSet.Contains(c.Id))
+            .ToListAsync(cancellationToken);
+
+        if (chapters.Count == 0) return 0;
+
+        // 用单事务原子更新；当前 Chapter.Number 无 UNIQUE 约束，直接赋值即可
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        var indexMap = chapters.ToDictionary(c => c.Id);
+        var updated = 0;
+        for (var i = 0; i < orderedChapterIds.Count; i++)
+        {
+            if (!indexMap.TryGetValue(orderedChapterIds[i], out var chapter)) continue;
+            var target = startNumber + i;
+            if (chapter.Number != target)
+            {
+                chapter.Number = target;
+                updated++;
+            }
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
+    }
 }

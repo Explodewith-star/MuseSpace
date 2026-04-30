@@ -15,11 +15,15 @@ public class MuseSpaceDbContext : DbContext
     public DbSet<Character> Characters => Set<Character>();
     public DbSet<StyleProfile> StyleProfiles => Set<StyleProfile>();
     public DbSet<WorldRule> WorldRules => Set<WorldRule>();
+    public DbSet<PlotThread> PlotThreads => Set<PlotThread>();
     public DbSet<GenerationRecord> GenerationRecords => Set<GenerationRecord>();
 
     // ── 用户认证 ───────────────────────────────────────────────────────────────
     public DbSet<User> Users => Set<User>();
     public DbSet<UserLlmPreference> UserLlmPreferences => Set<UserLlmPreference>();
+
+    // ── 功能开关 ────────────────────────────────────────────────────────────────
+    public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
 
     // ── Agent 运行记录 ──────────────────────────────────────────────────────────
     public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
@@ -254,6 +258,32 @@ public class MuseSpaceDbContext : DbContext
             entity.HasIndex(e => e.SourceNovelId);
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── PlotThread ────────────────────────────────────────────────────────
+        modelBuilder.Entity<PlotThread>(entity =>
+        {
+            entity.ToTable("plot_threads");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.Description).HasColumnType("text");
+            entity.Property(e => e.Importance).HasMaxLength(20);
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.RelatedCharacterIds).HasColumnType("uuid[]").IsRequired(false);
+            entity.Property(e => e.Tags).HasMaxLength(500);
+            entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => new { e.StoryProjectId, e.Status });
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── FeatureFlag ───────────────────────────────────────────────────────
+        modelBuilder.Entity<FeatureFlag>(entity =>
+        {
+            entity.ToTable("feature_flags");
+            entity.HasKey(e => e.Key);
+            entity.Property(e => e.Key).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
         });
     }
 }

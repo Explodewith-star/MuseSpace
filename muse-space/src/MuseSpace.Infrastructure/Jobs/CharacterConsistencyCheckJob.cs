@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MuseSpace.Application.Abstractions.Agents;
+using MuseSpace.Application.Abstractions.Features;
 using MuseSpace.Application.Abstractions.Llm;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Services.Agents;
@@ -23,6 +24,7 @@ public sealed class CharacterConsistencyCheckJob
     private readonly AgentSuggestionAppService _suggestionService;
     private readonly LlmProviderSelector _selector;
     private readonly MuseSpaceDbContext _db;
+    private readonly IFeatureFlagService _featureFlags;
     private readonly ILogger<CharacterConsistencyCheckJob> _logger;
 
     public CharacterConsistencyCheckJob(
@@ -31,6 +33,7 @@ public sealed class CharacterConsistencyCheckJob
         AgentSuggestionAppService suggestionService,
         LlmProviderSelector selector,
         MuseSpaceDbContext db,
+        IFeatureFlagService featureFlags,
         ILogger<CharacterConsistencyCheckJob> logger)
     {
         _agentRunner = agentRunner;
@@ -38,6 +41,7 @@ public sealed class CharacterConsistencyCheckJob
         _suggestionService = suggestionService;
         _selector = selector;
         _db = db;
+        _featureFlags = featureFlags;
         _logger = logger;
     }
 
@@ -49,6 +53,12 @@ public sealed class CharacterConsistencyCheckJob
     /// <param name="userId">触发用户 ID（可选）。</param>
     public async Task ExecuteAsync(Guid projectId, string draftText, Guid? userId)
     {
+        if (!await _featureFlags.IsEnabledAsync(FeatureFlagKeys.AutoCharacterConsistency, defaultValue: true))
+        {
+            _logger.LogInformation("[CharacterConsistency] Skipped by feature flag for project {ProjectId}", projectId);
+            return;
+        }
+
         _logger.LogInformation("[CharacterConsistency] Start for project {ProjectId}, text length {Length}",
             projectId, draftText.Length);
 
@@ -150,7 +160,7 @@ public sealed class CharacterConsistencyCheckJob
             await _suggestionService.CreateAsync(
                 agentRunId: agentContext.RunId,
                 storyProjectId: projectId,
-                category: SuggestionCategories.Character,
+                category: SuggestionCategories.CharacterConsistency,
                 title: $"角色冲突：{item.CharacterName} - {item.ConflictType}",
                 contentJson: contentJson,
                 targetEntityId: matchedChar?.Id);

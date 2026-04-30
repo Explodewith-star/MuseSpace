@@ -15,6 +15,8 @@ export function useAgentProgress() {
   const isConnected = ref(false)
   const latestEvent = ref<AgentProgressPayload | null>(null)
   const joinedProjectIds = new Set<string>()
+  /** 调用方可注册回调，断线重连后被调用以重新拉取活跃任务恢复进度 UI。 */
+  const reconnectedListeners = new Set<(projectIds: string[]) => void>()
 
   const connection = new signalR.HubConnectionBuilder()
     .withUrl(`${import.meta.env.VITE_APP_HUB_BASE ?? ''}/hubs/agent-progress`)
@@ -38,9 +40,15 @@ export function useAgentProgress() {
   })
 
   connection.onreconnected(async () => {
-    await Promise.all(
-      Array.from(joinedProjectIds).map((id) => connection.invoke('JoinProjectGroup', id)),
-    )
+    const ids = Array.from(joinedProjectIds)
+    await Promise.all(ids.map((id) => connection.invoke('JoinProjectGroup', id)))
+    reconnectedListeners.forEach((cb) => {
+      try {
+        cb(ids)
+      } catch {
+        // ignore listener errors
+      }
+    })
   })
 
   async function start() {
@@ -72,18 +80,25 @@ export function useAgentProgress() {
         await connection.invoke('LeaveProjectGroup', projectId)
       } catch {
         // ignore
-      }
-    }
-  }
-
-  function stop() {
-    joinedProjectIds.clear()
+    reconnectedListeners.clear()
     connection.stop()
     isConnected.value = false
   }
 
+  function onReconnected(cb: (projectIds: string[]) => void) {
+    reconnectedListeners.add(cb)
+    return () => reconnectedListeners.delete(cb)
+  }
+
   onUnmounted(stop)
 
+  return {
+    isConnected,
+    latestEvent,
+    start,
+    joinProject,
+    leaveProject,
+    onReconnected
   return {
     isConnected,
     latestEvent,

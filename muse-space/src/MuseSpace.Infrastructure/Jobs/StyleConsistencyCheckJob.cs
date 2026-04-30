@@ -140,7 +140,7 @@ public sealed class StyleConsistencyCheckJob
             await _suggestionService.CreateAsync(
                 agentRunId: ctx.RunId,
                 storyProjectId: projectId,
-                category: SuggestionCategories.Consistency,
+                category: SuggestionCategories.StyleConsistency,
                 title: $"文风偏离：{dim}",
                 contentJson: contentJson,
                 targetEntityId: chapterId == Guid.Empty ? null : chapterId);

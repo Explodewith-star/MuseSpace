@@ -28,6 +28,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAdmin: true },
   },
   {
+    path: '/admin/agent-runs',
+    name: 'AdminAgentRuns',
+    component: () => import('@/views/admin/AgentRunsView.vue'),
+    meta: { requiresAdmin: true },
+  },
+  {
+    path: '/admin/feature-flags',
+    name: 'AdminFeatureFlags',
+    component: () => import('@/views/admin/FeatureFlagsView.vue'),
+    meta: { requiresAdmin: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFound.vue'),

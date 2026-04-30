@@ -48,6 +48,11 @@ const projectRoutes: RouteRecordRaw[] = [
         component: () => import('@/views/projects/style-profile/index.vue'),
       },
       {
+        path: 'plot-threads',
+        name: 'ProjectPlotThreads',
+        component: () => import('@/views/projects/plot-threads/index.vue'),
+      },
+      {
         path: 'draft',
         name: 'ProjectDraft',
         component: () => import('@/views/projects/draft/index.vue'),

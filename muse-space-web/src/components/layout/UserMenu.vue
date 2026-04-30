@@ -100,6 +100,12 @@ async function switchModel(modelId: string) {
 function goAdminUsers() {
   router.push('/admin/users')
 }
+function goAdminAgentRuns() {
+  router.push('/admin/agent-runs')
+}
+function goAdminFeatureFlags() {
+  router.push('/admin/feature-flags')
+}
 
 function handleLogout() {
   authStore.logout()
@@ -203,6 +209,14 @@ onMounted(() => {
       <button v-if="authStore.isAdmin" class="user-menu__item" @click="goAdminUsers">
         <i class="i-lucide-users" />
         <span>用户管理</span>
+      </button>
+      <button v-if="authStore.isAdmin" class="user-menu__item" @click="goAdminAgentRuns">
+        <i class="i-lucide-activity" />
+        <span>Agent 运行</span>
+      </button>
+      <button v-if="authStore.isAdmin" class="user-menu__item" @click="goAdminFeatureFlags">
+        <i class="i-lucide-toggle-right" />
+        <span>功能开关</span>
       </button>
 
       <!-- 退出 -->

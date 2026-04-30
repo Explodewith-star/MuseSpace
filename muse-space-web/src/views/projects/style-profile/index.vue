@@ -1,10 +1,16 @@
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
 import AppButton from '@/components/base/AppButton.vue'
 import AppCard from '@/components/base/AppCard.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
+import AgentLauncher from '@/components/base/AgentLauncher.vue'
+import PendingSuggestionPanel from '@/components/base/PendingSuggestionPanel.vue'
 import { initStyleProfileState } from './hooks'
+
+const route = useRoute()
+const projectId = route.params.id as string
 
 const { loading, saveLoading, form, saveProfile } = initStyleProfileState()
 </script>
@@ -21,6 +27,24 @@ const { loading, saveLoading, form, saveProfile } = initStyleProfileState()
         保存
       </AppButton>
     </div>
+
+    <!-- D3-2 Agent 工作台：从原著提取候选文风画像 -->
+    <AgentLauncher
+      class="agent-launcher-block"
+      :project-id="projectId"
+      title="文风提取 Agent"
+      description="从已导入原著中归纳候选文风画像。结果进入建议中心后可确认并应用为项目文风。"
+      :default-agent-type="'styleprofile-extract'"
+      placeholder="可选：补充约束，例如“重点记录对话风格和叙事节奏”"
+      suggestion-category="StyleProfile"
+      :presets="[{ label: '从原著提取文风', agentType: 'styleprofile-extract', icon: 'i-lucide-feather' }]"
+    />
+
+    <PendingSuggestionPanel
+      :project-id="projectId"
+      :categories="['StyleConsistency']"
+      title="待处理文风偏离"
+    />
 
     <!-- 骨架屏 -->
     <div v-if="loading" class="form-skeleton">
@@ -81,6 +105,10 @@ const { loading, saveLoading, form, saveProfile } = initStyleProfileState()
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.agent-launcher-block {
   margin-bottom: 20px;
 }
 

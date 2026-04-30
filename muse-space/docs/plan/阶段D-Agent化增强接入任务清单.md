@@ -2,7 +2,7 @@
 
 > 阶段目标：在 Skill 主链路稳定的前提下，引入标准化 Agent 运行时，用于一致性校验、规划辅助和后续长篇创作增强。
 >
-> 当前状态：D1 已完成，D2 及后续增强能力尚未开始，阶段整体处于部分完成状态。
+> 当前状态（2026-04-30）：**主干全部完成**。D1 / D1-4 / D2 / D3-1 / D3-2 / D3-3 / D4-1 / D4-D2（AgentRun 面板）/ D4-D3（FeatureFlag）均已落地，后续只需按需深化。
 
 ---
 
@@ -20,11 +20,15 @@
 
 ## 2. 子阶段状态
 
-- D1 Agent 基础设施归一化：已完成
-- D2 一致性守护：未开始
-- D3 创作起点辅助：未开始
-- D3.5 菜单 Agent 化与统一交互：未开始
-- D4 长期创作辅助：未开始
+- D1 Agent 基础设施归一化：✅ 已完成
+- D1-4 统一任务中心与建议审核层：✅ 已完成
+- D2 一致性守护：✅ 主干完成（世界观/角色/文风/大纲一致性 Agent + 类目拆分 + 旧数据迁移）
+- D3-1 大纲规划：✅ 主干完成
+- D3-2 菜单 Agent 化与统一入口：✅ 主干完成（6 个 agentType + SignalR 重连恢复）
+- D3-3 导入后自动提取流水线：✅ 已完成
+- D4-1 伏笔追踪与风格 Reviewer：✅ 主干完成（PlotThread 模型 + Agent + 看板 + 草稿后自动扫描）
+- D4-D2 AgentRun 可观测面板：✅ 已完成
+- D4-D3 FeatureFlag 控制台：✅ 已完成
 
 ---
 
@@ -137,7 +141,7 @@
 
 - 带明显世界观冲突的样例可识别出大部分问题
 
-状态建议：未开始。
+状态：✅ 已完成。`ConsistencyCheckJob` 在草稿 / 大纲 完成后自动触发，结果进 `WorldRuleConsistency` / `OutlineConsistency` 类目；前端世界观页顶部 `PendingSuggestionPanel` 直接展示待办。
 
 ### D2-2 角色一致性 Agent
 
@@ -159,7 +163,7 @@
 
 - 人工构造的角色设定冲突可被检测并给出建议
 
-状态建议：未开始。
+状态：✅ 已完成。`CharacterConsistencyCheckJob` 在 `ChapterDraftJob` 完成后链式入队，结果进 `CharacterConsistency` 类目，角色页顶部扫描入口与待办面板均已接入。
 
 ### D3-1 大纲规划 Agent
 
@@ -283,7 +287,30 @@
 - 伏笔能被记录、提示、回收
 - Reviewer 可稳定产出可操作建议
 
-状态建议：未开始。
+状态：✅ 主干完成。`PlotThread` 实体 + `plot_threads` 表（`PlotThreadSchemaInitializerHostedService` 幂等建表）+ `IPlotThreadRepository` + CRUD Controller + 4 列看板 UI + `PlotThreadTrackingAgentDefinition` & Job（草稿后自动扫描 + 手动扫描入口）均已上线。后续可考虑伏笔过期提醒、与大纲交叉验证等深化项。
+
+### D4-2 AgentRun 可观测面板
+
+目标：管理员能够直接查看 Agent 运行情况、定位失败热点、判断是否需要灰度某个 Agent。
+
+任务：
+
+- `AdminAgentRunsController` 提供按 agentName / status 过滤 + 分页的运行列表、单条明细、按 N 天的全局统计（成功率 / 平均耗时 / 平均 token / 按 Agent 分组）。
+- 前端管理员菜单新增「Agent 运行」入口，支持卡片式统计 + 列表过滤 + 分页。
+
+状态：✅ 已完成。
+
+### D4-3 Feature Flag 控制台
+
+目标：让运营 / 管理员能够快速开启或紧急关闭某条 Agent 链路（如自动伏笔追踪、导入后自动提取等），不必发版。
+
+任务：
+
+- 后端 `IFeatureFlagService` + `FeatureFlagService`（IMemoryCache 30 秒短缓存避免热点 flag 频繁查 DB）+ `feature_flags` 表（同 PlotThread 一并幂等建表）。
+- 后端 `AdminFeatureFlagsController` 提供 List / Upsert。
+- 前端管理员菜单新增「功能开关」入口，支持新增 / 切换状态。
+
+状态：✅ 已完成。业务侧后续接入时只需 `await _featureFlags.IsEnabledAsync(key, defaultValue)` 包裹即可。
 
 ---
 

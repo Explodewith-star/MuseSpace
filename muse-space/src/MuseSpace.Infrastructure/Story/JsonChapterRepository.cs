@@ -71,4 +71,30 @@ public sealed class JsonChapterRepository : JsonRepositoryBase, IChapterReposito
         }
         return total;
     }
+
+    public async Task<int> BatchReorderAsync(
+        Guid projectId,
+        IReadOnlyList<Guid> orderedChapterIds,
+        int startNumber,
+        CancellationToken cancellationToken = default)
+    {
+        if (orderedChapterIds.Count == 0) return 0;
+        var all = await GetByProjectAsync(projectId, cancellationToken);
+        if (all.Count == 0) return 0;
+        var map = all.ToDictionary(c => c.Id);
+        var updated = 0;
+        for (var i = 0; i < orderedChapterIds.Count; i++)
+        {
+            if (!map.TryGetValue(orderedChapterIds[i], out var chapter)) continue;
+            var target = startNumber + i;
+            if (chapter.Number != target)
+            {
+                chapter.Number = target;
+                updated++;
+            }
+        }
+        if (updated > 0)
+            await WriteFileAsync(FilePath(projectId), all, cancellationToken);
+        return updated;
+    }
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
 import AppButton from '@/components/base/AppButton.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
@@ -7,7 +8,12 @@ import AppConfirm from '@/components/base/AppConfirm.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
+import AgentLauncher from '@/components/base/AgentLauncher.vue'
+import PendingSuggestionPanel from '@/components/base/PendingSuggestionPanel.vue'
 import { initWorldRulesState } from './hooks'
+
+const route = useRoute()
+const projectId = route.params.id as string
 
 const {
   rules,
@@ -45,6 +51,24 @@ function priorityVariant(p: number): 'danger' | 'accent' | 'muted' {
         添加规则
       </AppButton>
     </div>
+
+    <!-- D3-2 Agent 工作台：从原著批量提取候选世界观规则 -->
+    <AgentLauncher
+      class="agent-launcher-block"
+      :project-id="projectId"
+      title="世界观提取 Agent"
+      description="从已导入原著中提取候选世界观规则（如设定、社会结构、力量体系），结果进入建议中心等待确认。"
+      :default-agent-type="'worldrule-extract'"
+      placeholder="可选：补充约束，例如“重点提取修真等级体系”"
+      suggestion-category="WorldRule"
+      :presets="[{ label: '从原著提取规则', agentType: 'worldrule-extract', icon: 'i-lucide-globe' }]"
+    />
+
+    <PendingSuggestionPanel
+      :project-id="projectId"
+      :categories="['WorldRuleConsistency']"
+      title="待处理世界观冲突"
+    />
 
     <!-- 骨架屏 -->
     <div v-if="loading" class="rule-list">
@@ -216,6 +240,10 @@ function priorityVariant(p: number): 'danger' | 'accent' | 'muted' {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.agent-launcher-block {
   margin-bottom: 20px;
 }
 

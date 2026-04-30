@@ -36,9 +36,16 @@ const {
   openDelete,
   cancelDelete,
   confirmDelete,
+  reorderAll,
+  reorderLoading,
 } = initChaptersState()
 
-const STATUS_VARIANTS: Record<number, string> = { 0: 'muted', 1: 'accent', 2: 'primary', 3: 'success' }
+const STATUS_VARIANTS: Record<number, string> = {
+  0: 'muted',
+  1: 'accent',
+  2: 'primary',
+  3: 'success',
+}
 const STATUS_LABELS: Record<number, string> = { 0: '计划中', 1: '草稿中', 2: '修改中', 3: '已定稿' }
 
 function goDetail(chapterId: string) {
@@ -60,10 +67,7 @@ const worldRuleCount = ref(0)
 
 async function loadContextStats() {
   try {
-    const [chars, rules] = await Promise.all([
-      getCharacters(projectId),
-      getWorldRules(projectId),
-    ])
+    const [chars, rules] = await Promise.all([getCharacters(projectId), getWorldRules(projectId)])
     characterCount.value = chars.length
     worldRuleCount.value = rules.length
   } catch {
@@ -148,6 +152,17 @@ watch(outlineStage, (e) => {
     <div class="page__header">
       <h2 class="page__title">章节管理</h2>
       <div class="header-actions">
+        <AppButton
+          v-if="chapters.length > 0"
+          variant="ghost"
+          size="sm"
+          :loading="reorderLoading"
+          title="按当前顺序重排所有章节编号为 1..N"
+          @click="reorderAll"
+        >
+          <i class="i-lucide-list-ordered" />
+          重排编号
+        </AppButton>
         <AppButton variant="ghost" size="sm" @click="openPlanModal">
           <i class="i-lucide-sparkles" />
           AI 规划大纲
@@ -172,11 +187,12 @@ watch(outlineStage, (e) => {
     <!-- 持久化：待处理大纲提示横幅 -->
     <div v-if="pendingOutlineCount > 0 && !outlineStage" class="outline-pending-banner">
       <i class="i-lucide-sparkles banner-icon" />
-      <span>有 <strong>{{ pendingOutlineCount }}</strong> 份待处理大纲草案，前往建议中心查看并导入章节</span>
-      <AppButton
-        size="sm"
-        @click="router.push(`/projects/${projectId}/outline`)"
+      <span
+        >有
+        <strong>{{ pendingOutlineCount }}</strong>
+        份待处理大纲草案，前往建议中心查看并导入章节</span
       >
+      <AppButton size="sm" @click="router.push(`/projects/${projectId}/outline`)">
         前往查看
       </AppButton>
     </div>
@@ -222,7 +238,7 @@ watch(outlineStage, (e) => {
         <span class="chapter-num">第 {{ chapter.number }} 章</span>
         <span class="chapter-title">{{ chapter.title || '未命名' }}</span>
         <span class="chapter-summary">{{ chapter.summary || '—' }}</span>
-        <AppBadge :variant="(STATUS_VARIANTS[chapter.status] as any)" size="sm">
+        <AppBadge :variant="STATUS_VARIANTS[chapter.status] as any" size="sm">
           {{ STATUS_LABELS[chapter.status] }}
         </AppBadge>
         <button class="row-delete-btn" title="删除章节" @click.stop="openDelete(chapter)">
@@ -256,11 +272,7 @@ watch(outlineStage, (e) => {
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="drawerOpen = false">取消</AppButton>
-        <AppButton
-          :loading="createLoading"
-          :disabled="!createForm.number"
-          @click="submitCreate"
-        >
+        <AppButton :loading="createLoading" :disabled="!createForm.number" @click="submitCreate">
           保存
         </AppButton>
       </template>
@@ -309,7 +321,8 @@ watch(outlineStage, (e) => {
         </div>
 
         <p v-if="planForm.mode === 'continue' && chapters.length" class="plan-hint">
-          将基于已有 <strong>{{ chapters.length }}</strong> 章内容续写，新章节从第 {{ chapters.length + 1 }} 章开始。
+          将基于已有 <strong>{{ chapters.length }}</strong> 章内容续写，新章节从第
+          {{ chapters.length + 1 }} 章开始。
         </p>
         <p v-else-if="planForm.mode === 'extra' && chapters.length" class="plan-hint">
           将生成番外/支线卷，不影响主线，章号从第 {{ chapters.length + 1 }} 章开始。
@@ -344,11 +357,7 @@ watch(outlineStage, (e) => {
       </div>
       <template #footer>
         <AppButton variant="ghost" @click="planModalOpen = false">取消</AppButton>
-        <AppButton
-          :loading="planLoading"
-          :disabled="!planForm.goal.trim()"
-          @click="submitPlan"
-        >
+        <AppButton :loading="planLoading" :disabled="!planForm.goal.trim()" @click="submitPlan">
           <i class="i-lucide-sparkles" />
           开始规划
         </AppButton>
@@ -442,7 +451,9 @@ watch(outlineStage, (e) => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spin {
@@ -626,4 +637,3 @@ watch(outlineStage, (e) => {
   font-style: italic;
 }
 </style>
-

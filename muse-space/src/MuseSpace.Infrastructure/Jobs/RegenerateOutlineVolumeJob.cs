@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MuseSpace.Application.Abstractions.Agents;
@@ -177,6 +178,13 @@ public sealed class RegenerateOutlineVolumeJob
 
             _logger.LogInformation("[RegenerateVolume] Updated volume {Number} for suggestion {Id}",
                 volumeNumber, suggestionId);
+
+            // 链式触发大纲一致性预检（仅重做卷内容）
+            var redoneText = string.Join("\n\n", target.Chapters.Select(c =>
+                $"第{c.Number}章 {c.Title}\n目标：{c.Goal}\n摘要：{c.Summary}"));
+            BackgroundJob.Enqueue<ConsistencyCheckJob>(j =>
+                j.ExecuteAsync(projectId, redoneText, userId, $"大纲卷{volumeNumber}世界观", SuggestionCategories.OutlineConsistency));
+
             await _progressNotifier.NotifyDoneAsync(projectId, taskType,
                 $"卷 {volumeNumber} 已重做完成");
         }

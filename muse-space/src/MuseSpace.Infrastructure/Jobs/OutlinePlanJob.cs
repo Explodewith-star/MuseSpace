@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MuseSpace.Application.Abstractions.Agents;
@@ -222,6 +223,19 @@ public sealed class OutlinePlanJob
 
             _logger.LogInformation("[OutlinePlan] Saved outline with {Count} chapters for project {ProjectId}",
                 totalChapters, projectId);
+
+            // 8. 链式触发大纲一致性预检（仅当项目存在世界观规则时）
+            // 将所有章节 title+goal+summary 拼接为伪草稿，复用现有 ConsistencyCheckJob。
+            // 结果写入 OutlineConsistency 类目，标题前缀为"大纲世界观冲突"。
+            if (worldRules.Count > 0)
+            {
+                var outlineDraftText = string.Join("\n\n", volumes.SelectMany(v =>
+                    v.Chapters.Select(c =>
+                        $"第{c.Number}章 {c.Title}\n目标：{c.Goal}\n摘要：{c.Summary}")));
+                BackgroundJob.Enqueue<ConsistencyCheckJob>(j =>
+                    j.ExecuteAsync(projectId, outlineDraftText, userId, "大纲世界观", SuggestionCategories.OutlineConsistency));
+                _logger.LogInformation("[OutlinePlan] Enqueued outline consistency precheck for project {ProjectId}", projectId);
+            }
 
             await _progressNotifier.NotifyDoneAsync(projectId, taskType,
                 $"大纲已生成，共 {totalChapters} 章");

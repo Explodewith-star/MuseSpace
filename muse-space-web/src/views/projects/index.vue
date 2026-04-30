@@ -17,6 +17,7 @@ const navItems = computed(() => [
   { label: '角色', icon: 'i-lucide-users', to: `/projects/${projectId.value}/characters` },
   { label: '世界观', icon: 'i-lucide-globe', to: `/projects/${projectId.value}/world-rules` },
   { label: '文风', icon: 'i-lucide-pen-line', to: `/projects/${projectId.value}/style-profile` },
+  { label: '伏笔追踪', icon: 'i-lucide-spline', to: `/projects/${projectId.value}/plot-threads` },
   { label: '草稿生成', icon: 'i-lucide-sparkles', to: `/projects/${projectId.value}/draft` },
   { label: '原著导入', icon: 'i-lucide-book-open', to: `/projects/${projectId.value}/novels` },
   { label: '建议中心', icon: 'i-lucide-inbox', to: `/projects/${projectId.value}/suggestions` },

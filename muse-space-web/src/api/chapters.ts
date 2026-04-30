@@ -33,6 +33,21 @@ export function batchDeleteChapters(projectId: string, chapterIds: string[]): Pr
   return request.post(`/projects/${projectId}/chapters/batch-delete`, { chapterIds })
 }
 
+/**
+ * 批量重排章节编号。chapterIds 顺序即为目标编号（首项 → startNumber，默认 1）。
+ * 用于消除"删除章节后编号空洞"。返回实际更新数量。
+ */
+export function batchReorderChapters(
+  projectId: string,
+  chapterIds: string[],
+  startNumber = 1,
+): Promise<number> {
+  return request.post(`/projects/${projectId}/chapters/batch-reorder`, {
+    chapterIds,
+    startNumber,
+  })
+}
+
 /** 触发章节自动规划（写回 conflict/emotionCurve/keyCharacterIds/mustIncludePoints） */
 export function autoPlanChapter(projectId: string, chapterId: string): Promise<string> {
   return request.post(`/projects/${projectId}/chapters/${chapterId}/auto-plan`)

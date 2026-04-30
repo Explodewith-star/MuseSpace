@@ -105,11 +105,13 @@ public sealed class ChapterDraftJob
             await _progressNotifier.NotifyDoneAsync(projectId, TaskType,
                 $"第 {chapter.Number} 章 草稿已生成");
 
-            // 链式触发：文风一致性 + 角色一致性
+            // 链式触发：文风一致性 + 角色一致性 + 伏笔追踪
             BackgroundJob.Enqueue<StyleConsistencyCheckJob>(
                 j => j.ExecuteAsync(projectId, chapterId, result.Output, userId));
             BackgroundJob.Enqueue<CharacterConsistencyCheckJob>(
                 j => j.ExecuteAsync(projectId, result.Output, userId));
+            BackgroundJob.Enqueue<PlotThreadTrackingJob>(
+                j => j.ExecuteAsync(projectId, chapterId, userId));
         }
         catch (Exception ex)
         {

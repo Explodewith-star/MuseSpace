@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
 import AppButton from '@/components/base/AppButton.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
@@ -7,7 +8,12 @@ import AppConfirm from '@/components/base/AppConfirm.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
+import AgentLauncher from '@/components/base/AgentLauncher.vue'
+import PendingSuggestionPanel from '@/components/base/PendingSuggestionPanel.vue'
 import { initCharactersState } from './hooks'
+
+const route = useRoute()
+const projectId = route.params.id as string
 
 const {
   characters,
@@ -42,6 +48,24 @@ const {
         添加角色
       </AppButton>
     </div>
+
+    <!-- D3-2 Agent 工作台：从原著批量提取候选角色 -->
+    <AgentLauncher
+      class="agent-launcher-block"
+      :project-id="projectId"
+      title="角色提取 Agent"
+      description="从已导入原著中批量提取候选角色，结果进入建议中心等待确认。"
+      :default-agent-type="'character-extract'"
+      placeholder="可选：补充约束，例如“只提取主要配角，忽略路人”"
+      suggestion-category="Character"
+      :presets="[{ label: '从原著提取角色', agentType: 'character-extract', icon: 'i-lucide-users' }]"
+    />
+
+    <PendingSuggestionPanel
+      :project-id="projectId"
+      :categories="['CharacterConsistency']"
+      title="待处理角色冲突"
+    />
 
     <!-- 骨架屏 -->
     <div v-if="loading" class="char-grid">
@@ -240,6 +264,10 @@ const {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.agent-launcher-block {
   margin-bottom: 20px;
 }
 

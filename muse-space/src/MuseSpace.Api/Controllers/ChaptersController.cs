@@ -67,6 +67,19 @@ public class ChaptersController : ControllerBase
         return Ok(ApiResponse<int>.Ok(count));
     }
 
+    /// <summary>
+    /// 批量重排章节编号，按请求中 ChapterIds 顺序赋值 Number（默认从 1 起）。
+    /// 用于消除删除章节后编号出现空洞的情况。
+    /// </summary>
+    [HttpPost("batch-reorder")]
+    public async Task<ActionResult<ApiResponse<int>>> BatchReorder(
+        Guid projectId, [FromBody] BatchReorderChaptersRequest request, CancellationToken cancellationToken)
+    {
+        var count = await _service.BatchReorderAsync(
+            projectId, request.ChapterIds, request.StartNumber, cancellationToken);
+        return Ok(ApiResponse<int>.Ok(count));
+    }
+
     [HttpPut("{chapterId:guid}")]
     public async Task<ActionResult<ApiResponse<ChapterResponse>>> Update(
         Guid projectId, Guid chapterId, [FromBody] UpdateChapterRequest request, CancellationToken cancellationToken)

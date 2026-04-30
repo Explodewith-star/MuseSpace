@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MuseSpace.Application.Abstractions.Agents;
+using MuseSpace.Application.Abstractions.Features;
 using MuseSpace.Application.Abstractions.Llm;
 using MuseSpace.Application.Abstractions.Notifications;
 using MuseSpace.Application.Abstractions.Repositories;
@@ -29,6 +30,7 @@ public sealed class ExtractNovelAssetsJob
     private readonly IAgentProgressNotifier _progressNotifier;
     private readonly LlmProviderSelector _selector;
     private readonly MuseSpaceDbContext _db;
+    private readonly IFeatureFlagService _featureFlags;
     private readonly ILogger<ExtractNovelAssetsJob> _logger;
 
     public ExtractNovelAssetsJob(
@@ -39,6 +41,7 @@ public sealed class ExtractNovelAssetsJob
         IAgentProgressNotifier progressNotifier,
         LlmProviderSelector selector,
         MuseSpaceDbContext db,
+        IFeatureFlagService featureFlags,
         ILogger<ExtractNovelAssetsJob> logger)
     {
         _agentRunner = agentRunner;
@@ -48,12 +51,19 @@ public sealed class ExtractNovelAssetsJob
         _progressNotifier = progressNotifier;
         _selector = selector;
         _db = db;
+        _featureFlags = featureFlags;
         _logger = logger;
     }
 
     public async Task ExecuteAsync(Guid novelId, Guid? userId)
     {
         const string taskType = "asset-extract";
+
+        if (!await _featureFlags.IsEnabledAsync(FeatureFlagKeys.AutoExtractNovelAssets, defaultValue: true))
+        {
+            _logger.LogInformation("[AssetExtract] Skipped by feature flag for novel {NovelId}", novelId);
+            return;
+        }
 
         _logger.LogInformation("[AssetExtract] Start for novel {NovelId}", novelId);
 
@@ -113,16 +123,107 @@ public sealed class ExtractNovelAssetsJob
         }
     }
 
-    // ── 角色提取 ──────────────────────────────────────────────────────────
+    // ◣◣ 菜单 Agent 统一入口（D3-2）◣◣
+    // 以下公开方法供 AgentTasksController 重新触发单个提取。
+    // 均允许传入 userInput 作为补充约束追加到 Prompt 末尾。
+    // 若 novelId 为 null，默认选项目中最近完成索引的原著。
 
-    private async Task ExtractCharactersAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx)
+    public async Task ExecuteSingleAsync(Guid projectId, string agentType, Guid? novelId, string? userInput, Guid? userId)
     {
+        const string taskType = "asset-extract";
+        _logger.LogInformation("[MenuAgent] Single agent {AgentType} for project {ProjectId}", agentType, projectId);
+
+        var effectiveUserId = await ResolveUserIdAsync(projectId, userId);
+        await ApplyUserLlmPreferenceAsync(effectiveUserId);
+
+        var novel = await ResolveNovelAsync(projectId, novelId);
+        if (novel is null)
+        {
+            await _progressNotifier.NotifyFailedAsync(projectId, taskType, "项目下未找到已完成索引的原著，请先在《原著导入》上传原作");
+            return;
+        }
+
+        await _progressNotifier.NotifyStartedAsync(projectId, taskType);
+        try
+        {
+            var sampledText = await BuildSampledTextAsync(novel.Id);
+            var ctx = new AgentRunContext { UserId = effectiveUserId, ProjectId = projectId };
+
+            await _progressNotifier.NotifyGeneratingAsync(projectId, taskType);
+
+            switch (agentType)
+            {
+                case "character-extract":
+                    await ExtractCharactersAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    break;
+                case "worldrule-extract":
+                    await ExtractWorldRulesAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    break;
+                case "styleprofile-extract":
+                    await ExtractStyleProfileAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    break;
+                case "extract-all":
+                    await ExtractCharactersAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    await ExtractWorldRulesAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    await ExtractStyleProfileAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    break;
+                default:
+                    throw new InvalidOperationException($"unsupported agentType: {agentType}");
+            }
+
+            await _progressNotifier.NotifyDoneAsync(projectId, taskType, "Agent 任务完成，请前往建议中心查看");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[MenuAgent] Single agent {AgentType} failed", agentType);
+            await _progressNotifier.NotifyFailedAsync(projectId, taskType, "Agent 任务失败：" + ex.Message);
+        }
+    }
+
+    private async Task<Guid?> ResolveUserIdAsync(Guid projectId, Guid? userId)
+    {
+        if (userId is not null) return userId;
+        return await _db.StoryProjects
+            .AsNoTracking()
+            .Where(p => p.Id == projectId)
+            .Select(p => (Guid?)p.UserId)
+            .FirstOrDefaultAsync();
+    }
+
+    private async Task<Domain.Entities.Novel?> ResolveNovelAsync(Guid projectId, Guid? novelId)
+    {
+        if (novelId is not null)
+        {
+            var n = await _novelRepo.GetByIdAsync(novelId.Value);
+            return n?.StoryProjectId == projectId ? n : null;
+        }
+        var all = await _novelRepo.GetByProjectAsync(projectId);
+        return all
+            .Where(n => n.Status == Domain.Enums.NovelStatus.Indexed)
+            .OrderByDescending(n => n.FinishedAt ?? n.UpdatedAt)
+            .FirstOrDefault();
+    }
+
+    private async Task<string> BuildSampledTextAsync(Guid novelId)
+    {
+        var allChunks = await _chunkRepo.GetByNovelAsync(novelId);
+        var sampled = SampleChunks(allChunks.Select(c => c.Content).ToList(), SampleChunkCount);
+        return string.Join("\n\n---\n\n", sampled);
+    }
+
+    // ◣◣ 原有提取逻辑◣◣
+
+    // ── 角色提取 ────────────────────────────────────────────
+
+    private async Task ExtractCharactersAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
+    {
+        var extra = string.IsNullOrWhiteSpace(userInput) ? "" : $"\n\n## 补充约束\n\n{userInput!.Trim()}";
         var userPrompt = $"""
             ## 原著片段
 
             {sampledText}
 
-            请从以上原著片段中识别并提取所有主要角色的信息。
+            请从以上原著片段中识别并提取所有主要角色的信息。{extra}
             """;
 
         var result = await _agentRunner.RunAsync(CharacterExtractAgentDefinition.AgentName, userPrompt, ctx);
@@ -173,14 +274,15 @@ public sealed class ExtractNovelAssetsJob
 
     // ── 世界观提取 ────────────────────────────────────────────────────────
 
-    private async Task ExtractWorldRulesAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx)
+    private async Task ExtractWorldRulesAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
     {
+        var extra = string.IsNullOrWhiteSpace(userInput) ? "" : $"\n\n## 补充约束\n\n{userInput!.Trim()}";
         var userPrompt = $"""
             ## 原著片段
 
             {sampledText}
 
-            请从以上原著片段中提取对创作有约束性的世界观规则。
+            请从以上原著片段中提取对创作有约束性的世界观规则。{extra}
             """;
 
         var result = await _agentRunner.RunAsync(WorldRuleExtractionAgentDefinition.AgentName, userPrompt, ctx);
@@ -227,14 +329,15 @@ public sealed class ExtractNovelAssetsJob
 
     // ── 文风提取 ──────────────────────────────────────────────────────────
 
-    private async Task ExtractStyleProfileAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx)
+    private async Task ExtractStyleProfileAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
     {
+        var extra = string.IsNullOrWhiteSpace(userInput) ? "" : $"\n\n## 补充约束\n\n{userInput!.Trim()}";
         var userPrompt = $"""
             ## 原著片段
 
             {sampledText}
 
-            请从以上原著片段中归纳该作品的整体文风特征。
+            请从以上原著片段中归纳该作品的整体文风特征。{extra}
             """;
 
         var result = await _agentRunner.RunAsync(StyleProfileExtractionAgentDefinition.AgentName, userPrompt, ctx);

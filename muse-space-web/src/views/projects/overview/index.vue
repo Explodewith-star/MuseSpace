@@ -3,6 +3,8 @@ import { useRoute } from 'vue-router'
 import AppCard from '@/components/base/AppCard.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
+import AgentLauncher from '@/components/base/AgentLauncher.vue'
+import PendingSuggestionPanel from '@/components/base/PendingSuggestionPanel.vue'
 import { useProjectStore } from '@/store/modules/project'
 
 const route = useRoute()
@@ -29,6 +31,29 @@ const workflowSteps = [
 
 <template>
   <div class="overview-page">
+    <!-- D3-2 统一 Agent 入口：一句话提交任务 -->
+    <AgentLauncher
+      :project-id="projectId"
+      title="项目 Agent 工作台"
+      description="用一句话描述你想让 AI 做的事，下面预设可一键从已导入原著中提取全部资产，或生成项目摘要。"
+      :default-agent-type="'extract-all'"
+      placeholder="例如：提取原著中所有主要角色、世界观规则、文风画像"
+      :presets="[
+        { label: '一键提取全部', agentType: 'extract-all', icon: 'i-lucide-wand-2' },
+        { label: '只提取角色', agentType: 'character-extract', icon: 'i-lucide-users' },
+        { label: '只提取世界观', agentType: 'worldrule-extract', icon: 'i-lucide-globe' },
+        { label: '只提取文风', agentType: 'styleprofile-extract', icon: 'i-lucide-feather' },
+        { label: '生成项目摘要', agentType: 'project-summary', icon: 'i-lucide-clipboard-list' },
+      ]"
+    />
+
+    <PendingSuggestionPanel
+      :project-id="projectId"
+      :categories="['ProjectSummary']"
+      title="项目摘要与下一步建议"
+      :default-open="true"
+    />
+
     <!-- 项目信息卡 -->
     <AppCard class="info-card">
       <div v-if="projectStore.loading" class="info-skeleton">
