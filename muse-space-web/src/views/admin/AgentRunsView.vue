@@ -3,13 +3,16 @@ import { ref, onMounted } from 'vue'
 import {
   getAdminAgentRuns,
   getAdminAgentRunStats,
+  getAdminAgentRunDetail,
   type AgentRunListItem,
+  type AgentRunDetail,
   type AgentRunStats,
   type AgentRunStatus,
 } from '@/api/admin'
 import AppButton from '@/components/base/AppButton.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
+import AppModal from '@/components/base/AppModal.vue'
 
 const items = ref<AgentRunListItem[]>([])
 const total = ref(0)
@@ -22,6 +25,33 @@ const filterStatus = ref<'' | AgentRunStatus>('')
 
 const stats = ref<AgentRunStats | null>(null)
 const statsDays = ref(7)
+
+// ── 详情弹窗 ────────────────────────────────────────────────
+const detailOpen = ref(false)
+const detailLoading = ref(false)
+const detail = ref<AgentRunDetail | null>(null)
+const activeTab = ref<'input' | 'output'>('input')
+
+async function openDetail(id: string) {
+  detailOpen.value = true
+  detailLoading.value = true
+  detail.value = null
+  activeTab.value = 'input'
+  try {
+    detail.value = await getAdminAgentRunDetail(id)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function copyText(text?: string | null) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    /* ignore clipboard errors */
+  }
+}
 
 async function fetchList() {
   loading.value = true
@@ -160,7 +190,7 @@ onMounted(() => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="r in items" :key="r.id" class="border-t hover:bg-gray-50">
+          <tr v-for="r in items" :key="r.id" class="border-t hover:bg-gray-50 cursor-pointer" @click="openDetail(r.id)">
             <td class="px-3 py-2 font-mono">{{ r.agentName }}</td>
             <td><AppBadge :variant="statusBadge(r.status)">{{ r.status }}</AppBadge></td>
             <td>{{ formatDuration(r.durationMs) }}</td>
@@ -180,5 +210,51 @@ onMounted(() => {
         <AppButton variant="secondary" :disabled="page * pageSize >= total" @click="nextPage">下一页</AppButton>
       </div>
     </div>
+
+    <!-- 详情弹窗：完整 Prompt / Response -->
+    <AppModal v-model="detailOpen" title="Agent 运行详情" width="860px">
+      <div v-if="detailLoading" class="text-sm text-gray-500 py-6 text-center">加载中...</div>
+      <div v-else-if="detail" class="space-y-3">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+          <div><span class="text-gray-500">Agent：</span><span class="font-mono">{{ detail.agentName }}</span></div>
+          <div><span class="text-gray-500">状态：</span><AppBadge :variant="statusBadge(detail.status)">{{ detail.status }}</AppBadge></div>
+          <div><span class="text-gray-500">耗时：</span>{{ formatDuration(detail.durationMs) }}</div>
+          <div><span class="text-gray-500">Steps：</span>{{ detail.stepCount }}</div>
+          <div><span class="text-gray-500">Tokens：</span>{{ detail.inputTokens }} / {{ detail.outputTokens }}</div>
+          <div><span class="text-gray-500">开始：</span>{{ formatTime(detail.startedAt) }}</div>
+          <div v-if="detail.finishedAt"><span class="text-gray-500">结束：</span>{{ formatTime(detail.finishedAt) }}</div>
+          <div v-if="detail.projectId"><span class="text-gray-500">项目：</span><span class="font-mono text-xs">{{ detail.projectId }}</span></div>
+        </div>
+        <div v-if="detail.errorMessage" class="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">
+          错误：{{ detail.errorMessage }}
+        </div>
+
+        <div class="border-b flex gap-1">
+          <button
+            class="px-3 py-1 text-sm border-b-2 -mb-px"
+            :class="activeTab === 'input' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-600'"
+            @click="activeTab = 'input'"
+          >Input（Prompt）</button>
+          <button
+            class="px-3 py-1 text-sm border-b-2 -mb-px"
+            :class="activeTab === 'output' ? 'border-blue-500 text-blue-600 font-semibold' : 'border-transparent text-gray-600'"
+            @click="activeTab = 'output'"
+          >Output（Response）</button>
+          <div class="ml-auto">
+            <AppButton size="sm" variant="ghost"
+              @click="copyText(activeTab === 'input' ? (detail.inputFull ?? detail.inputPreview) : (detail.outputFull ?? detail.outputPreview))">
+              <i class="i-lucide-copy" /> 复制
+            </AppButton>
+          </div>
+        </div>
+
+        <pre v-if="activeTab === 'input'" class="bg-gray-50 border rounded p-3 text-xs whitespace-pre-wrap break-words max-h-[460px] overflow-auto">{{ detail.inputFull ?? detail.inputPreview ?? '（无 Input 记录）' }}</pre>
+        <pre v-else class="bg-gray-50 border rounded p-3 text-xs whitespace-pre-wrap break-words max-h-[460px] overflow-auto">{{ detail.outputFull ?? detail.outputPreview ?? '（无 Output 记录）' }}</pre>
+
+        <div class="text-xs text-gray-400">
+          注：完整文本上限 200K 字符，超长部分已截断；旧记录可能仅有 500 字符的 Preview。
+        </div>
+      </div>
+    </AppModal>
   </div>
 </template>

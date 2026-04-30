@@ -12,6 +12,8 @@ export interface PlotThreadResponse {
   plantedInChapterId?: string
   resolvedInChapterId?: string
   relatedCharacterIds?: string[]
+  /** 预期回收于第几章。当当前最新章号 > 本值且状态为 Introduced/Active 时视为过期。 */
+  expectedResolveByChapterNumber?: number
   tags?: string
   createdAt: string
   updatedAt: string
@@ -25,6 +27,7 @@ export interface UpsertPlotThreadRequest {
   plantedInChapterId?: string
   resolvedInChapterId?: string
   relatedCharacterIds?: string[]
+  expectedResolveByChapterNumber?: number
   tags?: string
 }
 

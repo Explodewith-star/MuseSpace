@@ -23,6 +23,13 @@ namespace MuseSpace.Infrastructure.Agents;
 /// </summary>
 public sealed class AgentRunner : IAgentRunner
 {
+    /// <summary>
+    /// 完整 Prompt / Response 文本的硬上限（字符数）。
+    /// 防止极端 Agent 输出（百兆级）撑爆 agent_runs 表。
+    /// 200_000 字符约等于 200KB（中文双字节场景下约 600KB），可覆盖绝大多数大纲 / 草稿场景。
+    /// </summary>
+    private const int FullTraceMaxChars = 200_000;
+
     private readonly ILlmClient _llmClient;
     private readonly MuseSpaceDbContext _dbContext;
     private readonly IConfiguration _configuration;
@@ -84,6 +91,7 @@ public sealed class AgentRunner : IAgentRunner
             ProjectId = context.ProjectId,
             Status = AgentRunStatus.Running,
             InputPreview = Truncate(userInput, 500),
+            InputFull = Truncate(userInput, FullTraceMaxChars),
         };
         _dbContext.AgentRuns.Add(agentRun);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -115,6 +123,7 @@ public sealed class AgentRunner : IAgentRunner
             agentRun.OutputTokens = context.TotalOutputTokens;
             agentRun.DurationMs = stopwatch.ElapsedMilliseconds;
             agentRun.OutputPreview = Truncate(result.Output, 500);
+            agentRun.OutputFull = Truncate(result.Output, FullTraceMaxChars);
             agentRun.ErrorMessage = result.ErrorMessage;
             agentRun.FinishedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync(cancellationToken);

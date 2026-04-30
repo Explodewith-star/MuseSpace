@@ -236,6 +236,8 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.InputPreview).HasColumnType("text");
             entity.Property(e => e.OutputPreview).HasColumnType("text");
+            entity.Property(e => e.InputFull).HasColumnType("text");
+            entity.Property(e => e.OutputFull).HasColumnType("text");
             entity.Property(e => e.ErrorMessage).HasColumnType("text");
             entity.HasIndex(e => e.AgentName);
             entity.HasIndex(e => e.UserId);

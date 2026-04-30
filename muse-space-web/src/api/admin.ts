@@ -50,7 +50,15 @@ export function getAdminAgentRuns(params: {
 }
 
 export function getAdminAgentRunDetail(id: string) {
-  return request.get<Record<string, unknown>>(`/admin/agent-runs/${id}`)
+  return request.get<AgentRunDetail>(`/admin/agent-runs/${id}`)
+}
+
+export interface AgentRunDetail extends AgentRunListItem {
+  stepCount: number
+  inputPreview?: string | null
+  outputPreview?: string | null
+  inputFull?: string | null
+  outputFull?: string | null
 }
 
 export function getAdminAgentRunStats(days = 7) {

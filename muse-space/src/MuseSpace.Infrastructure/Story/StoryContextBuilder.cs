@@ -1,4 +1,5 @@
-﻿using MuseSpace.Application.Abstractions.Memory;
+﻿using Microsoft.Extensions.Logging;
+using MuseSpace.Application.Abstractions.Memory;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Abstractions.Story;
 using MuseSpace.Domain.Entities;
@@ -7,16 +8,36 @@ namespace MuseSpace.Infrastructure.Story;
 
 /// <summary>
 /// Builds StoryContext by aggregating data from multiple repositories.
-/// Budget: last 3 chapter summaries, up to 4 characters, up to 8 world rules (ordered by Priority).
+/// Budget（C-2/C-3）：
+/// - 最近章节摘要：取最近 3 章。
+/// - 角色卡：最多 4 张。
+/// - 世界观规则：按 Priority DESC 取最多 8 条。
+/// - 原著片段：top-K 召回后按相似度阈值过滤，每段截断到 <see cref="NovelSnippetMaxChars"/>，
+///   全部片段总长度受 <see cref="NovelContextTotalCharBudget"/> 控制，避免 Prompt 膨胀。
+/// 优先级：WorldRule > CharacterCards > NovelSnippets > RecentChapterSummaries。
+/// 由 Prompt 模板保证：硬约束（角色 / 规则）在前，原著片段作为软约束在后。
 /// </summary>
 public sealed class StoryContextBuilder : IStoryContextBuilder
 {
+    /// <summary>原著检索召回 top-K。</summary>
+    private const int NovelTopK = 5;
+
+    /// <summary>低于该相似度的原著片段视为弱相关，直接丢弃。</summary>
+    private const double NovelSimilarityThreshold = 0.3;
+
+    /// <summary>单个原著片段最大字符数（超出则尾部截断 + 省略号）。</summary>
+    private const int NovelSnippetMaxChars = 800;
+
+    /// <summary>所有原著片段累计字符数预算，超出后停止追加。</summary>
+    private const int NovelContextTotalCharBudget = 3000;
+
     private readonly IStoryProjectRepository _projectRepo;
     private readonly ICharacterRepository _characterRepo;
     private readonly IWorldRuleRepository _worldRuleRepo;
     private readonly IChapterRepository _chapterRepo;
     private readonly IStyleProfileRepository _styleProfileRepo;
     private readonly INovelMemorySearchService _novelMemorySearchService;
+    private readonly ILogger<StoryContextBuilder> _logger;
 
     public StoryContextBuilder(
         IStoryProjectRepository projectRepo,
@@ -24,7 +45,8 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         IWorldRuleRepository worldRuleRepo,
         IChapterRepository chapterRepo,
         IStyleProfileRepository styleProfileRepo,
-        INovelMemorySearchService novelMemorySearchService)
+        INovelMemorySearchService novelMemorySearchService,
+        ILogger<StoryContextBuilder> logger)
     {
         _projectRepo = projectRepo;
         _characterRepo = characterRepo;
@@ -32,6 +54,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         _chapterRepo = chapterRepo;
         _styleProfileRepo = styleProfileRepo;
         _novelMemorySearchService = novelMemorySearchService;
+        _logger = logger;
     }
 
     public async Task<StoryContext> BuildAsync(StoryContextRequest request, CancellationToken cancellationToken = default)
@@ -85,20 +108,52 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         StoryContextRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.SceneGoal))
+        {
+            _logger.LogDebug(
+                "[StoryContext] novel snippets skipped, SceneGoal empty (project={ProjectId})",
+                request.StoryProjectId);
             return [];
+        }
+
         try
         {
             var results = await _novelMemorySearchService.SearchAsync(
-                request.StoryProjectId, request.SceneGoal, topK: 5, ct: cancellationToken);
-            return results
-                .Where(r => r.Similarity > 0.3)
-                .Select(r => r.Content)
-                .ToList();
+                request.StoryProjectId, request.SceneGoal, topK: NovelTopK, ct: cancellationToken);
+
+            var aboveThreshold = results.Where(r => r.Similarity > NovelSimilarityThreshold).ToList();
+
+            // 按预算追加：超出 NovelContextTotalCharBudget 后停止
+            var injected = new List<string>(aboveThreshold.Count);
+            var totalChars = 0;
+            foreach (var r in aboveThreshold)
+            {
+                var snippet = TruncateWithEllipsis(r.Content, NovelSnippetMaxChars);
+                if (totalChars + snippet.Length > NovelContextTotalCharBudget) break;
+                injected.Add(snippet);
+                totalChars += snippet.Length;
+            }
+
+            _logger.LogInformation(
+                "[StoryContext] novel snippets project={ProjectId} retrieved={Retrieved} aboveThreshold={Above} injected={Injected} chars={Chars}/{Budget} topK={TopK} threshold={Threshold}",
+                request.StoryProjectId, results.Count, aboveThreshold.Count,
+                injected.Count, totalChars, NovelContextTotalCharBudget,
+                NovelTopK, NovelSimilarityThreshold);
+
+            return injected;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex,
+                "[StoryContext] novel snippet retrieval failed, falling back to empty (project={ProjectId})",
+                request.StoryProjectId);
             return [];
         }
+    }
+
+    private static string TruncateWithEllipsis(string text, int maxChars)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxChars) return text;
+        return text[..maxChars] + "…";
     }
 
     private static string FormatCharacterCard(Character c)

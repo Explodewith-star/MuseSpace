@@ -32,11 +32,17 @@ public class AgentRun
     /// <summary>执行耗时（毫秒）。</summary>
     public long DurationMs { get; set; }
 
-    /// <summary>用户输入摘要（截断保存）。</summary>
+    /// <summary>用户输入摘要（截断保存，列表展示用）。</summary>
     public string? InputPreview { get; set; }
 
-    /// <summary>Agent 最终输出摘要（截断保存）。</summary>
+    /// <summary>Agent 最终输出摘要（截断保存，列表展示用）。</summary>
     public string? OutputPreview { get; set; }
+
+    /// <summary>用户输入完整文本（详情查看用，最大约 200KB）。</summary>
+    public string? InputFull { get; set; }
+
+    /// <summary>Agent 最终输出完整文本（详情查看用，最大约 200KB）。</summary>
+    public string? OutputFull { get; set; }
 
     /// <summary>失败时的错误信息。</summary>
     public string? ErrorMessage { get; set; }

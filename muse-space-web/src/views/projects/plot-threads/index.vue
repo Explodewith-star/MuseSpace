@@ -21,6 +21,7 @@ import {
   type PlotThreadStatus,
   type UpsertPlotThreadRequest,
 } from '@/api/plotThreads'
+import { getChapters } from '@/api/chapters'
 import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
@@ -29,6 +30,7 @@ const toast = useToast()
 
 const threads = ref<PlotThreadResponse[]>([])
 const loading = ref(false)
+const maxChapterNumber = ref(0)
 
 const STATUS_COLUMNS: { key: PlotThreadStatus; title: string; icon: string }[] = [
   { key: 'Introduced', title: '已埋伏', icon: 'i-lucide-sprout' },
@@ -41,10 +43,24 @@ function listByStatus(s: PlotThreadStatus) {
   return threads.value.filter((t) => t.status === s)
 }
 
+// ── D4-1 过期提醒：状态为 Introduced/Active，且预期回收章号已被当前最新章号越过 ──
+function isStale(t: PlotThreadResponse): boolean {
+  if (t.status !== 'Introduced' && t.status !== 'Active') return false
+  if (!t.expectedResolveByChapterNumber) return false
+  return maxChapterNumber.value > t.expectedResolveByChapterNumber
+}
+
+const staleThreads = computed(() => threads.value.filter(isStale))
+
 async function refresh() {
   loading.value = true
   try {
-    threads.value = await getPlotThreads(projectId.value)
+    const [list, chapters] = await Promise.all([
+      getPlotThreads(projectId.value),
+      getChapters(projectId.value).catch(() => []),
+    ])
+    threads.value = list
+    maxChapterNumber.value = chapters.length === 0 ? 0 : Math.max(...chapters.map((c) => c.number))
   } finally {
     loading.value = false
   }
@@ -71,6 +87,10 @@ function openEdit(t: PlotThreadResponse) {
     importance: t.importance ?? 'Medium',
     status: t.status,
     tags: t.tags,
+    expectedResolveByChapterNumber: t.expectedResolveByChapterNumber,
+    plantedInChapterId: t.plantedInChapterId,
+    resolvedInChapterId: t.resolvedInChapterId,
+    relatedCharacterIds: t.relatedCharacterIds,
   }
   modalOpen.value = true
 }
@@ -100,6 +120,7 @@ async function changeStatus(t: PlotThreadResponse, s: PlotThreadStatus) {
     plantedInChapterId: t.plantedInChapterId,
     resolvedInChapterId: t.resolvedInChapterId,
     relatedCharacterIds: t.relatedCharacterIds,
+    expectedResolveByChapterNumber: t.expectedResolveByChapterNumber,
     tags: t.tags,
   })
   toast.success('状态已更新')
@@ -135,6 +156,15 @@ async function removeOne(t: PlotThreadResponse) {
       @done="refresh()"
     />
 
+    <!-- D4-1 过期提醒 banner -->
+    <div v-if="staleThreads.length > 0" class="stale-banner">
+      <i class="i-lucide-alert-triangle" />
+      <div class="stale-banner__text">
+        <strong>{{ staleThreads.length }}</strong> 条伏笔预期回收章号已超过当前最新章号
+        <span class="stale-banner__hint">（当前最新：第 {{ maxChapterNumber }} 章）</span>
+      </div>
+    </div>
+
     <div class="kanban">
       <div v-for="col in STATUS_COLUMNS" :key="col.key" class="kanban-col">
         <div class="kanban-head">
@@ -149,14 +179,21 @@ async function removeOne(t: PlotThreadResponse) {
             v-for="t in listByStatus(col.key)"
             :key="t.id"
             class="thread-card"
+            :class="{ 'thread-card--stale': isStale(t) }"
           >
             <div class="card-head">
               <span class="card-title">{{ t.title }}</span>
               <span v-if="t.importance" class="card-importance" :class="`imp-${t.importance.toLowerCase()}`">
                 {{ t.importance }}
               </span>
+              <span v-if="isStale(t)" class="card-stale" title="预期回收章号已超过当前最新章号">
+                <i class="i-lucide-alert-triangle" /> 过期
+              </span>
             </div>
             <p v-if="t.description" class="card-desc">{{ t.description }}</p>
+            <div v-if="t.expectedResolveByChapterNumber" class="card-meta">
+              预期回收于第 {{ t.expectedResolveByChapterNumber }} 章
+            </div>
             <div class="card-actions">
               <select
                 class="status-select"
@@ -196,6 +233,16 @@ async function removeOne(t: PlotThreadResponse) {
           </label>
         </div>
         <AppInput v-model="form.tags" label="标签（逗号分隔）" />
+        <label class="field">
+          <span class="field-label">预期回收章号（可选）</span>
+          <input
+            v-model.number="form.expectedResolveByChapterNumber"
+            type="number"
+            min="1"
+            class="field-select"
+            placeholder="例如 80，超过则提示过期"
+          />
+        </label>
       </div>
       <template #footer>
         <AppButton variant="ghost" @click="modalOpen = false">取消</AppButton>
@@ -277,6 +324,45 @@ async function removeOne(t: PlotThreadResponse) {
 
 .thread-card {
   padding: 10px 12px;
+}
+
+.thread-card--stale {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.card-stale {
+  font-size: 11px;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 4px;
+  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.card-meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}
+
+.stale-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.stale-banner__hint {
+  color: #b45309;
+  margin-left: 4px;
 }
 
 .card-head {

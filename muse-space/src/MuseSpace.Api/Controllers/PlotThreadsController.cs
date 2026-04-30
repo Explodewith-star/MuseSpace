@@ -51,6 +51,7 @@ public class PlotThreadsController : ControllerBase
             PlantedInChapterId = req.PlantedInChapterId,
             ResolvedInChapterId = req.ResolvedInChapterId,
             RelatedCharacterIds = req.RelatedCharacterIds,
+            ExpectedResolveByChapterNumber = req.ExpectedResolveByChapterNumber,
             Tags = req.Tags,
         };
         var saved = await _repo.AddAsync(thread, ct);
@@ -71,6 +72,7 @@ public class PlotThreadsController : ControllerBase
         item.PlantedInChapterId = req.PlantedInChapterId;
         item.ResolvedInChapterId = req.ResolvedInChapterId;
         item.RelatedCharacterIds = req.RelatedCharacterIds;
+        item.ExpectedResolveByChapterNumber = req.ExpectedResolveByChapterNumber;
         item.Tags = req.Tags;
 
         await _repo.UpdateAsync(item, ct);
@@ -99,6 +101,7 @@ public class PlotThreadsController : ControllerBase
         PlantedInChapterId = t.PlantedInChapterId,
         ResolvedInChapterId = t.ResolvedInChapterId,
         RelatedCharacterIds = t.RelatedCharacterIds,
+        ExpectedResolveByChapterNumber = t.ExpectedResolveByChapterNumber,
         Tags = t.Tags,
         CreatedAt = t.CreatedAt,
         UpdatedAt = t.UpdatedAt,

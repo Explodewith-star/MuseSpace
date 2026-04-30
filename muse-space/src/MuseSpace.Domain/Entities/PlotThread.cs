@@ -33,6 +33,9 @@ public class PlotThread
     /// <summary>关联角色 ID（PostgreSQL uuid[]）。</summary>
     public List<Guid>? RelatedCharacterIds { get; set; }
 
+    /// <summary>预期回收于第几章（超过则由前端提示过期）。</summary>
+    public int? ExpectedResolveByChapterNumber { get; set; }
+
     /// <summary>逗号分隔的标签，如"修真,长卷"。</summary>
     public string? Tags { get; set; }
 

@@ -107,15 +107,15 @@ onUnmounted(() => leaveProject(props.projectId))
 
 // ── 触发 Agent ─────────────────────────────────────────────
 async function runWith(agentType: AgentType) {
-  if  chapterId: props.chapterId,
-      scope: props.scope,
-      rawText: props.rawText,
-     (submitting.value) return
+  if (submitting.value) return
   submitting.value = true
   try {
     const resp = await triggerAgentTask(props.projectId, {
       agentType,
       userInput: userInput.value.trim() || undefined,
+      chapterId: props.chapterId,
+      scope: props.scope,
+      rawText: props.rawText,
     })
     lastTaskType.value = resp.taskType
     toast.success('任务已提交，请关注下方进度')

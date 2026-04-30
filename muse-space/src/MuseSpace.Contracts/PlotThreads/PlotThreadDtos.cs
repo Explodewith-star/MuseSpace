@@ -11,6 +11,8 @@ public sealed class PlotThreadResponse
     public Guid? PlantedInChapterId { get; set; }
     public Guid? ResolvedInChapterId { get; set; }
     public List<Guid>? RelatedCharacterIds { get; set; }
+    /// <summary>预期回收于第几章。</summary>
+    public int? ExpectedResolveByChapterNumber { get; set; }
     public string? Tags { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -26,5 +28,7 @@ public sealed class UpsertPlotThreadRequest
     public Guid? PlantedInChapterId { get; set; }
     public Guid? ResolvedInChapterId { get; set; }
     public List<Guid>? RelatedCharacterIds { get; set; }
+    /// <summary>预期回收于第几章。</summary>
+    public int? ExpectedResolveByChapterNumber { get; set; }
     public string? Tags { get; set; }
 }

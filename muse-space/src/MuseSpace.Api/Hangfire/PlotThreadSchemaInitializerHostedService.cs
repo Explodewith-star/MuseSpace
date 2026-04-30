@@ -69,6 +69,25 @@ public sealed class PlotThreadSchemaInitializerHostedService : IHostedService
                     "CREATE INDEX IF NOT EXISTS ix_agent_runs_started_at_desc ON agent_runs(\"StartedAt\" DESC)",
                     ct);
             }, cancellationToken);
+
+            // D4-D2 深化：补 InputFull / OutputFull 两列承载完整 Prompt / Response，用于管理员明细查看。
+            await runner.RunOnceAsync("2026_04_30_agent_runs_full_input_output", async (ctx, ct) =>
+            {
+                await ctx.Database.ExecuteSqlRawAsync(
+                    """
+                    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS "InputFull" text;
+                    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS "OutputFull" text;
+                    """,
+                    ct);
+            }, cancellationToken);
+
+            // D4-1 深化：补 plot_threads.ExpectedResolveByChapterNumber，用于过期提醒。
+            await runner.RunOnceAsync("2026_04_30_plot_threads_expected_resolve_by", async (ctx, ct) =>
+            {
+                await ctx.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE plot_threads ADD COLUMN IF NOT EXISTS \"ExpectedResolveByChapterNumber\" int",
+                    ct);
+            }, cancellationToken);
         }
         catch (Exception ex)
         {

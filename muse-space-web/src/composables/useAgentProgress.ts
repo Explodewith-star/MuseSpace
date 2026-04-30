@@ -80,8 +80,17 @@ export function useAgentProgress() {
         await connection.invoke('LeaveProjectGroup', projectId)
       } catch {
         // ignore
+      }
+    }
+  }
+
+  async function stop() {
     reconnectedListeners.clear()
-    connection.stop()
+    try {
+      await connection.stop()
+    } catch {
+      // ignore
+    }
     isConnected.value = false
   }
 
@@ -98,13 +107,7 @@ export function useAgentProgress() {
     start,
     joinProject,
     leaveProject,
-    onReconnected
-  return {
-    isConnected,
-    latestEvent,
-    start,
-    joinProject,
-    leaveProject,
+    onReconnected,
     stop,
   }
 }
