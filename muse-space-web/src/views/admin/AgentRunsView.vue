@@ -100,10 +100,10 @@ function formatTime(s: string) {
   return new Date(s).toLocaleString()
 }
 
-function statusBadge(s: AgentRunStatus) {
+function statusBadge(s: AgentRunStatus): 'success' | 'danger' | 'accent' {
   if (s === 'Succeeded') return 'success'
   if (s === 'Failed') return 'danger'
-  return 'info'
+  return 'accent'
 }
 
 onMounted(() => {
