@@ -101,11 +101,14 @@ public class ChaptersController : ControllerBase
 
     /// <summary>触发本章节草稿生成（基于章节计划字段）。</summary>
     [HttpPost("{chapterId:guid}/generate-draft")]
-    public ActionResult<ApiResponse<string>> GenerateDraft(Guid projectId, Guid chapterId)
+    public ActionResult<ApiResponse<string>> GenerateDraft(
+        Guid projectId,
+        Guid chapterId,
+        [FromBody] GenerateChapterDraftRequest? request)
     {
         var userId = CurrentUserId;
         _backgroundJobs.Enqueue<ChapterDraftJob>(
-            job => job.ExecuteAsync(projectId, chapterId, userId));
+            job => job.ExecuteAsync(projectId, chapterId, userId, request));
         return Ok(ApiResponse<string>.Ok("已提交章节草稿生成任务"));
     }
 

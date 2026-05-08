@@ -1,4 +1,4 @@
-﻿# MuseSpace 部署指南
+# MuseSpace 部署指南
 
 > 目标服务器：`152.136.11.140`（腾讯云 Docker CE，ubuntu 用户）  
 > 部署完成后访问地址：`http://152.136.11.140`
@@ -56,7 +56,7 @@ docker version   # 能看到版本号即成功
 
 ```bash
 git clone https://github.com/Explodewith-star/MuseSpace.git ~/musespace/code
-cd ~/musespace/code/muse-space/muse-space
+cd ~/musespace/code/muse-space/deployment
 ```
 
 如果之前用 SSH 克隆了，改成 HTTPS：
@@ -167,7 +167,7 @@ docker login ghcr.io -u explodewith-star -p 你的PAT_TOKEN
 > ⚠️ 所有 docker compose 命令必须在 `docker-compose.yml` 所在目录执行。
 
 ```bash
-cd ~/musespace/code/muse-space/muse-space
+cd ~/musespace/code/muse-space/deployment
 git pull origin main
 docker compose pull
 docker compose up -d
@@ -196,7 +196,7 @@ curl http://localhost/                 # 返回 HTML 即前端正常
 git push origin main
 
 # 服务器：
-cd ~/musespace/code/muse-space/muse-space
+cd ~/musespace/code/muse-space/deployment
 git pull origin main      # 同步 docker-compose.yml 等配置变更（不能省！）
 docker compose pull       # 拉取最新镜像
 docker compose up -d      # 滚动更新（不中断服务）
@@ -208,7 +208,7 @@ docker compose up -d      # 滚动更新（不中断服务）
 
 ```bash
 # 查看本次是否有新变量
-git diff HEAD~1 HEAD -- muse-space/muse-space/docker-compose.yml | grep "^\+" | grep '\${'
+git diff HEAD~1 HEAD -- muse-space/deployment/docker-compose.yml | grep "^\+" | grep '\${'
 
 # 如有新变量，编辑 .env 追加后重启
 nano .env
@@ -220,7 +220,7 @@ docker compose up -d
 ## 四、常用运维命令
 
 ```bash
-cd ~/musespace/code/muse-space/muse-space
+cd ~/musespace/code/muse-space/deployment
 
 # 查看容器状态
 docker compose ps
@@ -259,7 +259,7 @@ docker exec -it musespace_db psql -U msadmin -d musespace_dev -c "ALTER USER msa
 | `unauthorized` / `denied` 拉取 ghcr.io | ghcr.io 包是私有的，未登录 | `docker login ghcr.io` 或把包设为 Public |
 | `no such manifest` | ghcr.io 上还没有镜像 | 等 GitHub Actions 构建完成（绿色 ✅）再 pull |
 | `invalid reference format` | `.env` 中 `GITHUB_USERNAME` 为空 | `nano .env` 确认 `GITHUB_USERNAME=explodewith-star` |
-| `no configuration file provided` | 在错误目录执行了 docker compose | `cd ~/musespace/code/muse-space/muse-space` |
+| `no configuration file provided` | 在错误目录执行了 docker compose | `cd ~/musespace/code/muse-space/deployment` |
 | `password authentication failed` | 密码末尾特殊字符被截断 | `docker exec musespace-api printenv ConnectionStrings__DefaultConnection` 核对密码 |
 | 容器启动后立即退出 | 程序启动报错（如 JwtSecret 未配置） | `docker compose logs api` 查看详细错误 |
 | 后端拒绝启动，日志报 `JWT secret` | `AUTH_JWT_SECRET` 未填或长度 < 32 | `nano .env` 补充 `AUTH_JWT_SECRET`，重启 |
@@ -331,7 +331,7 @@ dotnet ef migrations list --project src/MuseSpace.Infrastructure --startup-proje
 | 6 | `password authentication failed` | 密码末尾 `.` 紧接 `;` 被截断 | 去掉密码末尾的 `.` |
 | 7 | `role "postgres" does not exist` | 超级用户是 `msadmin` 不是 `postgres` | 用 `psql -U msadmin` 进入 |
 | 8 | `git pull` 卡住 | SSH 克隆但未配 SSH 密钥 | `git remote set-url origin https://...` |
-| 9 | `no configuration file provided` | 在错误目录执行 docker compose | `cd ~/musespace/code/muse-space/muse-space` |
+| 9 | `no configuration file provided` | 在错误目录执行 docker compose | `cd ~/musespace/code/muse-space/deployment` |
 | 10 | `/api/llm-provider` 返回 500 | DI 注册缺失 | 在 `ServiceCollectionExtensions.cs` 补全注册 |
 | 11 | 草稿生成 500，日志报 `/app/logs/generations` 权限拒绝 | 宿主机挂载目录由 root 创建，容器 app 用户无写权限 | 已彻底移除 JSON 文件写入，改为 Serilog 日志 |
 | 12 | GitHub Actions 前端构建失败，`npm ci` exit code 1 | Dockerfile 用 `node:24-alpine` 与本地 npm 生成的 lockfile 不兼容 | Dockerfile 改为 `node:22-alpine`（LTS），重新生成 package-lock.json |

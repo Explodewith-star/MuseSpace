@@ -1,5 +1,6 @@
 using Hangfire;
 using Hangfire.Server;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MuseSpace.Application.Abstractions.Llm;
@@ -25,6 +26,7 @@ public sealed class EmbedNovelJob
     private readonly IEmbeddingClient _embeddingClient;
     private readonly MuseSpaceDbContext _db;
     private readonly IImportProgressNotifier _notifier;
+    private readonly ITaskProgressService _taskProgress;
     private readonly ILogger<EmbedNovelJob> _logger;
 
     public EmbedNovelJob(
@@ -33,6 +35,7 @@ public sealed class EmbedNovelJob
         IEmbeddingClient embeddingClient,
         MuseSpaceDbContext db,
         IImportProgressNotifier notifier,
+        ITaskProgressService taskProgress,
         ILogger<EmbedNovelJob> logger)
     {
         _novelRepo = novelRepo;
@@ -40,6 +43,7 @@ public sealed class EmbedNovelJob
         _embeddingClient = embeddingClient;
         _db = db;
         _notifier = notifier;
+        _taskProgress = taskProgress;
         _logger = logger;
     }
 
@@ -54,6 +58,17 @@ public sealed class EmbedNovelJob
             _logger.LogWarning("Novel {NovelId} not found, skipping", novelId);
             return;
         }
+
+        // 查找项目所属用户（Hangfire 无 HTTP 上下文）
+        var userId = await _db.StoryProjects
+            .AsNoTracking()
+            .Where(p => p.Id == novel.StoryProjectId)
+            .Select(p => (Guid?)p.UserId)
+            .FirstOrDefaultAsync();
+
+        var bgTaskId = await _taskProgress.StartAsync(
+            userId, novel.StoryProjectId, BackgroundTaskType.NovelImport,
+            $"向量化《{novel.Title}》");
 
         try
         {
@@ -111,6 +126,8 @@ public sealed class EmbedNovelJob
 
                 // Push progress via SignalR
                 await _notifier.NotifyEmbedProgressAsync(novelId, done, total);
+                var pct = total > 0 ? (int)(done * 100L / total) : 100;
+                await _taskProgress.ReportProgressAsync(bgTaskId, pct, $"已向量化 {done}/{total} 段");
 
                 _logger.LogInformation("EmbedNovelJob: {Done}/{Total} chunks embedded for novel {NovelId}",
                     done, total, novelId);
@@ -126,6 +143,7 @@ public sealed class EmbedNovelJob
             await _novelRepo.UpdateAsync(novel);
 
             await _notifier.NotifyImportDoneAsync(novelId, total);
+            await _taskProgress.CompleteAsync(bgTaskId, $"向量化完成，共 {total} 段");
 
             // 链式触发：自动资产提取
             BackgroundJob.Enqueue<ExtractNovelAssetsJob>(j => j.ExecuteAsync(novelId, null));
@@ -141,6 +159,7 @@ public sealed class EmbedNovelJob
             novel.UpdatedAt = DateTime.UtcNow;
             await _novelRepo.UpdateAsync(novel);
             await _notifier.NotifyImportFailedAsync(novelId, ex.Message);
+            await _taskProgress.FailAsync(bgTaskId, ex.Message);
             throw;
         }
     }

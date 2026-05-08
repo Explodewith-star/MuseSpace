@@ -16,6 +16,8 @@ public class MuseSpaceDbContext : DbContext
     public DbSet<StyleProfile> StyleProfiles => Set<StyleProfile>();
     public DbSet<WorldRule> WorldRules => Set<WorldRule>();
     public DbSet<PlotThread> PlotThreads => Set<PlotThread>();
+    public DbSet<ChapterEvent> ChapterEvents => Set<ChapterEvent>();
+    public DbSet<CanonFact> CanonFacts => Set<CanonFact>();
     public DbSet<GenerationRecord> GenerationRecords => Set<GenerationRecord>();
 
     // ── 章节批量草稿生成 ──────────────────────────────────────────────────────
@@ -37,6 +39,10 @@ public class MuseSpaceDbContext : DbContext
     // ── public schema：原著导入 ───────────────────────────────────────────────
     public DbSet<Novel> Novels => Set<Novel>();
     public DbSet<NovelChunk> NovelChunks => Set<NovelChunk>();
+    public DbSet<NovelCharacterSnapshot> NovelCharacterSnapshots => Set<NovelCharacterSnapshot>();
+
+    // ── 后台任务跟踪 ─────────────────────────────────────────────────────────
+    public DbSet<BackgroundTaskRecord> BackgroundTasks => Set<BackgroundTaskRecord>();
 
     // ── memory schema：向量检索 ───────────────────────────────────────────────
     public DbSet<NovelChunkEmbedding> ChunkEmbeddings => Set<NovelChunkEmbedding>();
@@ -172,6 +178,8 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.FileKey).HasMaxLength(1000);
             entity.Property(e => e.FileHash).HasMaxLength(64);
             entity.Property(e => e.LastError).HasColumnType("text");
+            entity.Property(e => e.EndingSummary).HasColumnType("text");
+            entity.Property(e => e.StyleSummary).HasColumnType("text");
             entity.Property(e => e.Status).HasConversion<int>();
             entity.HasIndex(e => e.StoryProjectId);
             entity.HasIndex(e => new { e.StoryProjectId, e.FileHash })
@@ -205,6 +213,19 @@ public class MuseSpaceDbContext : DbContext
             //   "CREATE INDEX idx_chunk_embeddings_hnsw " +
             //   "ON memory.chunk_embeddings USING hnsw (embedding vector_cosine_ops) " +
             //   "WITH (m = 16, ef_construction = 64);");
+        });
+
+        // ── NovelCharacterSnapshot ────────────────────────────────────────────
+        modelBuilder.Entity<NovelCharacterSnapshot>(entity =>
+        {
+            entity.ToTable("novel_character_snapshots");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.CharacterName).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.EndingState).HasColumnType("text").IsRequired();
+            entity.HasIndex(e => e.NovelId);
+            entity.HasIndex(e => e.StoryProjectId);
+            entity.HasOne<Novel>().WithMany().HasForeignKey(e => e.NovelId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── User ──────────────────────────────────────────────────────────────
@@ -282,6 +303,44 @@ public class MuseSpaceDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // ── ChapterEvent (Module D 正典事实层 / 时间线) ──────────────────────
+        modelBuilder.Entity<ChapterEvent>(entity =>
+        {
+            entity.ToTable("chapter_events");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.EventType).HasMaxLength(60).IsRequired();
+            entity.Property(e => e.EventText).HasColumnType("text").IsRequired();
+            entity.Property(e => e.ActorCharacterIds).HasColumnType("uuid[]").IsRequired(false);
+            entity.Property(e => e.TargetCharacterIds).HasColumnType("uuid[]").IsRequired(false);
+            entity.Property(e => e.Location).HasMaxLength(200);
+            entity.Property(e => e.TimePoint).HasMaxLength(200);
+            entity.Property(e => e.Importance).HasMaxLength(20);
+            entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => new { e.StoryProjectId, e.ChapterId });
+            entity.HasIndex(e => new { e.StoryProjectId, e.IsIrreversible });
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Chapter>().WithMany().HasForeignKey(e => e.ChapterId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── CanonFact (Module D 正典事实层 / 状态真相) ───────────────────────
+        modelBuilder.Entity<CanonFact>(entity =>
+        {
+            entity.ToTable("canon_facts");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FactType).HasMaxLength(60).IsRequired();
+            entity.Property(e => e.FactKey).HasMaxLength(300).IsRequired();
+            entity.Property(e => e.FactValue).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.Notes).HasColumnType("text");
+            entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => new { e.StoryProjectId, e.FactType });
+            entity.HasIndex(e => new { e.StoryProjectId, e.FactType, e.FactKey }).IsUnique();
+            entity.HasIndex(e => new { e.StoryProjectId, e.IsLocked });
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // ── FeatureFlag ───────────────────────────────────────────────────────
         modelBuilder.Entity<FeatureFlag>(entity =>
         {
@@ -289,6 +348,20 @@ public class MuseSpaceDbContext : DbContext
             entity.HasKey(e => e.Key);
             entity.Property(e => e.Key).HasMaxLength(100);
             entity.Property(e => e.Description).HasMaxLength(500);
+        });
+
+        // ── BackgroundTaskRecord ──────────────────────────────────────────────
+        modelBuilder.Entity<BackgroundTaskRecord>(entity =>
+        {
+            entity.ToTable("background_tasks");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TaskType).HasConversion<int>();
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Title).HasMaxLength(300).IsRequired();
+            entity.Property(e => e.StatusMessage).HasMaxLength(500);
+            entity.Property(e => e.ErrorMessage).HasColumnType("text");
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.Status });
         });
 
         // ── ChapterBatchDraftRun ──────────────────────────────────────────────

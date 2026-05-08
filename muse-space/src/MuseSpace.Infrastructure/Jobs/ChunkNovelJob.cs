@@ -1,5 +1,6 @@
 using Hangfire;
 using Hangfire.Server;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MuseSpace.Application.Abstractions.Notifications;
@@ -7,6 +8,7 @@ using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Abstractions.Storage;
 using MuseSpace.Domain.Enums;
 using MuseSpace.Infrastructure.Novels;
+using MuseSpace.Infrastructure.Persistence;
 using Npgsql;
 using NpgsqlTypes;
 using System.Diagnostics;
@@ -25,6 +27,8 @@ public sealed class ChunkNovelJob
     private readonly NovelTextChunker _chunker;
     private readonly IConfiguration _configuration;
     private readonly IImportProgressNotifier _notifier;
+    private readonly ITaskProgressService _taskProgress;
+    private readonly MuseSpaceDbContext _db;
     private readonly ILogger<ChunkNovelJob> _logger;
 
     public ChunkNovelJob(
@@ -33,6 +37,8 @@ public sealed class ChunkNovelJob
         NovelTextChunker chunker,
         IConfiguration configuration,
         IImportProgressNotifier notifier,
+        ITaskProgressService taskProgress,
+        MuseSpaceDbContext db,
         ILogger<ChunkNovelJob> logger)
     {
         _novelRepo = novelRepo;
@@ -40,6 +46,8 @@ public sealed class ChunkNovelJob
         _chunker = chunker;
         _configuration = configuration;
         _notifier = notifier;
+        _taskProgress = taskProgress;
+        _db = db;
         _logger = logger;
     }
 
@@ -64,6 +72,17 @@ public sealed class ChunkNovelJob
         novel.UpdatedAt = DateTime.UtcNow;
         await _novelRepo.UpdateAsync(novel);
 
+        // 查找项目所属用户（Hangfire 无 HTTP 上下文）
+        var userId = await _db.StoryProjects
+            .AsNoTracking()
+            .Where(p => p.Id == novel.StoryProjectId)
+            .Select(p => (Guid?)p.UserId)
+            .FirstOrDefaultAsync();
+
+        var bgTaskId = await _taskProgress.StartAsync(
+            userId, novel.StoryProjectId, BackgroundTaskType.NovelImport,
+            $"切片导入《{novel.Title}》");
+
         try
         {
             var stopwatch = Stopwatch.StartNew();
@@ -82,6 +101,7 @@ public sealed class ChunkNovelJob
             var chunks = _chunker.Split(content, novelId, novel.StoryProjectId);
             _logger.LogInformation("Novel {NovelId} split into {Count} chunks", novelId, chunks.Count);
             await _notifier.NotifyChunkingProgressAsync(novelId, chunks.Count, chunks.Count);
+            await _taskProgress.ReportProgressAsync(bgTaskId, 30, $"已切片 {chunks.Count} 段，正在写入数据库…");
 
             // 2b. 幂等保护：清除当前 novel 的旧 chunks（Hangfire 重试时避免重复）
             var connString = _configuration.GetConnectionString("DefaultConnection")!;
@@ -157,6 +177,7 @@ public sealed class ChunkNovelJob
             novel.UpdatedAt = DateTime.UtcNow;
             await _novelRepo.UpdateAsync(novel);
 
+            await _taskProgress.CompleteAsync(bgTaskId, $"切片完成，共 {chunks.Count} 段，开始向量化…");
             _logger.LogInformation(
                 "ChunkNovelJob completed for novel {NovelId}: {Count} chunks written in {ElapsedMs} ms",
                 novelId, chunks.Count, stopwatch.ElapsedMilliseconds);
@@ -170,6 +191,7 @@ public sealed class ChunkNovelJob
             novel.UpdatedAt = DateTime.UtcNow;
             await _novelRepo.UpdateAsync(novel);
             await _notifier.NotifyImportFailedAsync(novelId, ex.Message);
+            await _taskProgress.FailAsync(bgTaskId, ex.Message);
             throw;
         }
     }

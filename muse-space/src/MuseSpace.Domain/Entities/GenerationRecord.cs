@@ -15,5 +15,8 @@ public class GenerationRecord
     public string? ErrorMessage { get; set; }
     public string? InputPreview { get; set; }
     public string? OutputPreview { get; set; }
+    public int InputTokens { get; set; }
+    public int OutputTokens { get; set; }
+    public int TotalTokens { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

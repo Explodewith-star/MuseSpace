@@ -2,12 +2,15 @@
 import AppButton from '@/components/base/AppButton.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppInput from '@/components/base/AppInput.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import { initDraftState } from './hooks'
 
 const {
   form, generating, result, elapsed, generate,
   selectedProvider, selectedModel,
+  REFERENCE_FOCUS_OPTIONS,
+  REFERENCE_STRENGTH_OPTIONS,
 } = initDraftState()
 </script>
 
@@ -34,6 +37,31 @@ const {
           label="情绪弧线"
           placeholder="如：紧张 → 震撼 → 压抑"
         />
+        <div class="reference-box">
+          <div class="reference-box__head">
+            <span class="reference-box__title">当前草稿参考片段</span>
+            <span class="reference-box__hint">可选，只影响本次生成</span>
+          </div>
+          <div class="reference-box__controls">
+            <AppSelect
+              v-model="form.referenceFocus"
+              :options="REFERENCE_FOCUS_OPTIONS"
+              label="参考方向"
+              :searchable="false"
+            />
+            <AppSelect
+              v-model="form.referenceStrength"
+              :options="REFERENCE_STRENGTH_OPTIONS"
+              label="参考强度"
+              :searchable="false"
+            />
+          </div>
+          <AppTextarea
+            v-model="form.referenceText"
+            placeholder="粘贴一段希望本次草稿参考的文本。系统只参考所选方向，不要求 AI 复述或照搬。"
+            :rows="5"
+          />
+        </div>
       </div>
 
       <!-- 当前 AI 配置（只读展示；切换请到顶部用户菜单） -->
@@ -137,6 +165,42 @@ const {
 .form-actions {
   margin-top: 16px;
   flex-shrink: 0;
+}
+
+.reference-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 4%, transparent);
+}
+
+.reference-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reference-box__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.reference-box__hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.reference-box__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 /* AI 配置区块 */

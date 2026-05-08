@@ -10,4 +10,14 @@ public class StoryContextRequest
     public string SceneGoal { get; init; } = string.Empty;
     public string? Conflict { get; init; }
     public string? EmotionCurve { get; init; }
+
+    // ── Module E：续写/外传模式 ─────────────────────────────────────
+    public Domain.Enums.GenerationMode GenerationMode { get; init; } = Domain.Enums.GenerationMode.Original;
+    public Guid? SourceNovelId { get; init; }
+    public int? ContinuationStartChapterNumber { get; init; }
+    public int? OriginalRangeStart { get; init; }
+    public int? OriginalRangeEnd { get; init; }
+    public List<Guid>? RelatedCharacterIds { get; init; }
+    public string? BranchTopic { get; init; }
+    public Domain.Enums.DivergencePolicy DivergencePolicy { get; init; } = Domain.Enums.DivergencePolicy.SoftCanon;
 }

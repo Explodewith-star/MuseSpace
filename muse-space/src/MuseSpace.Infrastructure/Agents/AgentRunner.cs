@@ -180,19 +180,22 @@ public sealed class AgentRunner : IAgentRunner
     {
         context.CurrentStep = 1;
 
-        var output = await _llmClient.ChatAsync(definition.SystemPrompt, userInput, cancellationToken);
+        var llmResult = await _llmClient.ChatAsync(definition.SystemPrompt, userInput, cancellationToken);
+
+        context.TotalInputTokens += llmResult.InputTokens;
+        context.TotalOutputTokens += llmResult.OutputTokens;
 
         steps.Add(new AgentStep
         {
             Index = 1,
             Type = AgentStepType.LlmResponse,
-            Content = output,
+            Content = llmResult.Content,
         });
 
         return new AgentRunResult
         {
             Success = true,
-            Output = output,
+            Output = llmResult.Content,
             AgentName = definition.Name,
             Steps = steps,
         };

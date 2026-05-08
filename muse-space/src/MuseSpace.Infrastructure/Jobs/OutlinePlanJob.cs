@@ -10,6 +10,7 @@ using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Services.Agents;
 using MuseSpace.Application.Services.Suggestions;
 using MuseSpace.Contracts.Suggestions;
+using MuseSpace.Domain.Enums;
 using MuseSpace.Infrastructure.Persistence;
 
 namespace MuseSpace.Infrastructure.Jobs;
@@ -27,6 +28,7 @@ public sealed class OutlinePlanJob
     private readonly IWorldRuleRepository _worldRuleRepo;
     private readonly AgentSuggestionAppService _suggestionService;
     private readonly IAgentProgressNotifier _progressNotifier;
+    private readonly ITaskProgressService _taskProgress;
     private readonly LlmProviderSelector _selector;
     private readonly MuseSpaceDbContext _db;
     private readonly ILogger<OutlinePlanJob> _logger;
@@ -38,6 +40,7 @@ public sealed class OutlinePlanJob
         IWorldRuleRepository worldRuleRepo,
         AgentSuggestionAppService suggestionService,
         IAgentProgressNotifier progressNotifier,
+        ITaskProgressService taskProgress,
         LlmProviderSelector selector,
         MuseSpaceDbContext db,
         ILogger<OutlinePlanJob> logger)
@@ -48,6 +51,7 @@ public sealed class OutlinePlanJob
         _worldRuleRepo = worldRuleRepo;
         _suggestionService = suggestionService;
         _progressNotifier = progressNotifier;
+        _taskProgress = taskProgress;
         _selector = selector;
         _db = db;
         _logger = logger;
@@ -70,6 +74,16 @@ public sealed class OutlinePlanJob
 
         // 加载用户 LLM 偏好（Hangfire 无 HTTP 上下文，需手动应用）
         await ApplyUserLlmPreferenceAsync(userId);
+
+        var modeLabel = mode switch
+        {
+            "continue" => "续写",
+            "extra" => "番外",
+            _ => "全新",
+        };
+        var bgTaskId = await _taskProgress.StartAsync(
+            userId, projectId, BackgroundTaskType.OutlinePlanning,
+            $"AI 大纲规划（{modeLabel}）");
 
         await _progressNotifier.NotifyStartedAsync(projectId, taskType);
 
@@ -134,6 +148,7 @@ public sealed class OutlinePlanJob
 
             // 4. 调用 Agent
             await _progressNotifier.NotifyGeneratingAsync(projectId, taskType);
+            await _taskProgress.ReportProgressAsync(bgTaskId, 30, "正在调用 AI 生成大纲…");
 
             var agentContext = new AgentRunContext
             {
@@ -150,8 +165,9 @@ public sealed class OutlinePlanJob
             {
                 _logger.LogWarning("[OutlinePlan] Agent failed for project {ProjectId}: {Error}",
                     projectId, result.ErrorMessage);
-                await _progressNotifier.NotifyFailedAsync(projectId, taskType,
-                    result.ErrorMessage ?? "Agent 执行失败");
+                var err = result.ErrorMessage ?? "Agent 执行失败";
+                await _progressNotifier.NotifyFailedAsync(projectId, taskType, err);
+                await _taskProgress.FailAsync(bgTaskId, err);
                 return;
             }
 
@@ -176,12 +192,14 @@ public sealed class OutlinePlanJob
             {
                 _logger.LogWarning(ex, "[OutlinePlan] Failed to parse Agent output for project {ProjectId}", projectId);
                 await _progressNotifier.NotifyFailedAsync(projectId, taskType, "大纲 JSON 解析失败");
+                await _taskProgress.FailAsync(bgTaskId, "大纲 JSON 解析失败");
                 return;
             }
             if (volumes.Count == 0 || volumes.All(v => v.Chapters.Count == 0))
             {
                 _logger.LogWarning("[OutlinePlan] Agent returned empty outline for project {ProjectId}", projectId);
                 await _progressNotifier.NotifyFailedAsync(projectId, taskType, "Agent 返回了空大纲");
+                await _taskProgress.FailAsync(bgTaskId, "Agent 返回了空大纲");
                 return;
             }
 
@@ -207,7 +225,7 @@ public sealed class OutlinePlanJob
             });
 
             var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
-            var modeLabel = mode switch
+            var modeLabelDisplay = mode switch
             {
                 "continue" => "续写",
                 "extra" => "番外",
@@ -218,11 +236,13 @@ public sealed class OutlinePlanJob
                 agentRunId: agentContext.RunId,
                 storyProjectId: projectId,
                 category: SuggestionCategories.Outline,
-                title: $"大纲草案（{modeLabel}·{totalChapters}章·{timestamp}）",
+                title: $"大纲草案（{modeLabelDisplay}·{totalChapters}章·{timestamp}）",
                 contentJson: contentJson);
 
             _logger.LogInformation("[OutlinePlan] Saved outline with {Count} chapters for project {ProjectId}",
                 totalChapters, projectId);
+
+            await _taskProgress.ReportProgressAsync(bgTaskId, 85, $"已生成 {totalChapters} 章大纲，正在预检…");
 
             // 8. 链式触发大纲一致性预检（仅当项目存在世界观规则时）
             // 将所有章节 title+goal+summary 拼接为伪草稿，复用现有 ConsistencyCheckJob。
@@ -239,11 +259,13 @@ public sealed class OutlinePlanJob
 
             await _progressNotifier.NotifyDoneAsync(projectId, taskType,
                 $"大纲已生成，共 {totalChapters} 章");
+            await _taskProgress.CompleteAsync(bgTaskId, $"大纲已生成，共 {totalChapters} 章");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[OutlinePlan] Unexpected error for project {ProjectId}", projectId);
             await _progressNotifier.NotifyFailedAsync(projectId, taskType, "生成过程发生意外错误");
+            await _taskProgress.FailAsync(bgTaskId, ex.Message);
         }
     }
 

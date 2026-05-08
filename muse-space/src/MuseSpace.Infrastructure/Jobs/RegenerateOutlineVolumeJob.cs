@@ -9,6 +9,7 @@ using MuseSpace.Application.Abstractions.Notifications;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Services.Agents;
 using MuseSpace.Contracts.Suggestions;
+using MuseSpace.Domain.Enums;
 using MuseSpace.Infrastructure.Persistence;
 
 namespace MuseSpace.Infrastructure.Jobs;
@@ -21,6 +22,7 @@ public sealed class RegenerateOutlineVolumeJob
     private readonly IAgentRunner _agentRunner;
     private readonly IAgentSuggestionRepository _suggestionRepo;
     private readonly IAgentProgressNotifier _progressNotifier;
+    private readonly ITaskProgressService _taskProgress;
     private readonly LlmProviderSelector _selector;
     private readonly MuseSpaceDbContext _db;
     private readonly ILogger<RegenerateOutlineVolumeJob> _logger;
@@ -29,6 +31,7 @@ public sealed class RegenerateOutlineVolumeJob
         IAgentRunner agentRunner,
         IAgentSuggestionRepository suggestionRepo,
         IAgentProgressNotifier progressNotifier,
+        ITaskProgressService taskProgress,
         LlmProviderSelector selector,
         MuseSpaceDbContext db,
         ILogger<RegenerateOutlineVolumeJob> logger)
@@ -36,6 +39,7 @@ public sealed class RegenerateOutlineVolumeJob
         _agentRunner = agentRunner;
         _suggestionRepo = suggestionRepo;
         _progressNotifier = progressNotifier;
+        _taskProgress = taskProgress;
         _selector = selector;
         _db = db;
         _logger = logger;
@@ -54,6 +58,11 @@ public sealed class RegenerateOutlineVolumeJob
 
         var projectId = suggestion.StoryProjectId;
         await ApplyUserLlmPreferenceAsync(userId);
+
+        var bgTaskId = await _taskProgress.StartAsync(
+            userId, projectId, BackgroundTaskType.OutlinePlanning,
+            $"重新生成第 {volumeNumber} 卷大纲");
+
         await _progressNotifier.NotifyStartedAsync(projectId, taskType);
 
         try
@@ -63,6 +72,7 @@ public sealed class RegenerateOutlineVolumeJob
             if (payload is null || payload.Volumes.Count == 0)
             {
                 await _progressNotifier.NotifyFailedAsync(projectId, taskType, "原大纲格式异常，无法重做");
+                await _taskProgress.FailAsync(bgTaskId, "原大纲格式异常，无法重做");
                 return;
             }
 
@@ -70,6 +80,7 @@ public sealed class RegenerateOutlineVolumeJob
             if (target is null)
             {
                 await _progressNotifier.NotifyFailedAsync(projectId, taskType, $"未找到第 {volumeNumber} 卷");
+                await _taskProgress.FailAsync(bgTaskId, $"未找到第 {volumeNumber} 卷");
                 return;
             }
 
@@ -106,6 +117,7 @@ public sealed class RegenerateOutlineVolumeJob
                 """;
 
             await _progressNotifier.NotifyGeneratingAsync(projectId, taskType);
+            await _taskProgress.ReportProgressAsync(bgTaskId, 30, "正在调用 AI 重做卷大纲…");
 
             var agentContext = new AgentRunContext
             {
@@ -121,7 +133,9 @@ public sealed class RegenerateOutlineVolumeJob
             if (!result.Success)
             {
                 _logger.LogWarning("[RegenerateVolume] Agent failed: {Error}", result.ErrorMessage);
-                await _progressNotifier.NotifyFailedAsync(projectId, taskType, result.ErrorMessage ?? "Agent 执行失败");
+                var err = result.ErrorMessage ?? "Agent 执行失败";
+                await _progressNotifier.NotifyFailedAsync(projectId, taskType, err);
+                await _taskProgress.FailAsync(bgTaskId, err);
                 return;
             }
 
@@ -144,6 +158,7 @@ public sealed class RegenerateOutlineVolumeJob
             {
                 _logger.LogWarning(ex, "[RegenerateVolume] Failed to parse Agent output");
                 await _progressNotifier.NotifyFailedAsync(projectId, taskType, "重做结果 JSON 解析失败");
+                await _taskProgress.FailAsync(bgTaskId, "重做结果 JSON 解析失败");
                 return;
             }
 
@@ -151,6 +166,7 @@ public sealed class RegenerateOutlineVolumeJob
             if (newVolume is null || newVolume.Chapters.Count == 0)
             {
                 await _progressNotifier.NotifyFailedAsync(projectId, taskType, "Agent 返回了空卷");
+                await _taskProgress.FailAsync(bgTaskId, "Agent 返回了空卷");
                 return;
             }
 
@@ -187,11 +203,13 @@ public sealed class RegenerateOutlineVolumeJob
 
             await _progressNotifier.NotifyDoneAsync(projectId, taskType,
                 $"卷 {volumeNumber} 已重做完成");
+            await _taskProgress.CompleteAsync(bgTaskId, $"第 {volumeNumber} 卷大纲重做完成");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[RegenerateVolume] Unexpected error for suggestion {Id}", suggestionId);
             await _progressNotifier.NotifyFailedAsync(projectId, taskType, "重做过程发生意外错误");
+            await _taskProgress.FailAsync(bgTaskId, ex.Message);
         }
     }
 

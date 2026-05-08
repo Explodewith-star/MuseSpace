@@ -7,6 +7,7 @@ using MuseSpace.Application.Abstractions.Llm;
 using MuseSpace.Application.Abstractions.Notifications;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Services.Agents;
+using MuseSpace.Domain.Enums;
 using MuseSpace.Infrastructure.Persistence;
 
 namespace MuseSpace.Infrastructure.Jobs;
@@ -23,6 +24,7 @@ public sealed class ChapterAutoPlanJob
     private readonly IChapterRepository _chapterRepo;
     private readonly ICharacterRepository _characterRepo;
     private readonly IAgentProgressNotifier _progressNotifier;
+    private readonly ITaskProgressService _taskProgress;
     private readonly LlmProviderSelector _selector;
     private readonly MuseSpaceDbContext _db;
     private readonly ILogger<ChapterAutoPlanJob> _logger;
@@ -32,6 +34,7 @@ public sealed class ChapterAutoPlanJob
         IChapterRepository chapterRepo,
         ICharacterRepository characterRepo,
         IAgentProgressNotifier progressNotifier,
+        ITaskProgressService taskProgress,
         LlmProviderSelector selector,
         MuseSpaceDbContext db,
         ILogger<ChapterAutoPlanJob> logger)
@@ -40,6 +43,7 @@ public sealed class ChapterAutoPlanJob
         _chapterRepo = chapterRepo;
         _characterRepo = characterRepo;
         _progressNotifier = progressNotifier;
+        _taskProgress = taskProgress;
         _selector = selector;
         _db = db;
         _logger = logger;
@@ -50,6 +54,11 @@ public sealed class ChapterAutoPlanJob
         _logger.LogInformation("[ChapterAutoPlan] Start chapter={ChapterId}", chapterId);
 
         await ApplyUserLlmPreferenceAsync(userId);
+
+        var bgTaskId = await _taskProgress.StartAsync(
+            userId, projectId, BackgroundTaskType.ChapterPlanning,
+            $"第 {chapterId} 章写作计划自动生成");
+
         await _progressNotifier.NotifyStartedAsync(projectId, TaskType);
 
         try
@@ -58,6 +67,7 @@ public sealed class ChapterAutoPlanJob
             if (chapter is null)
             {
                 await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "章节不存在");
+                await _taskProgress.FailAsync(bgTaskId, "章节不存在");
                 return;
             }
 
@@ -83,6 +93,7 @@ public sealed class ChapterAutoPlanJob
                 """;
 
             await _progressNotifier.NotifyGeneratingAsync(projectId, TaskType);
+            await _taskProgress.ReportProgressAsync(bgTaskId, 30, "正在调用 AI 生成写作计划…");
 
             var ctx = new AgentRunContext { UserId = userId, ProjectId = projectId };
             var result = await _agentRunner.RunAsync(
@@ -92,6 +103,7 @@ public sealed class ChapterAutoPlanJob
             {
                 await _progressNotifier.NotifyFailedAsync(projectId, TaskType,
                     result.ErrorMessage ?? "Agent 执行失败");
+                await _taskProgress.FailAsync(bgTaskId, result.ErrorMessage ?? "Agent 执行失败");
                 return;
             }
 
@@ -109,12 +121,14 @@ public sealed class ChapterAutoPlanJob
             {
                 _logger.LogWarning(ex, "[ChapterAutoPlan] JSON parse failed");
                 await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "章节计划 JSON 解析失败");
+                await _taskProgress.FailAsync(bgTaskId, "章节计划 JSON 解析失败");
                 return;
             }
 
             if (payload is null)
             {
                 await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "Agent 返回空计划");
+                await _taskProgress.FailAsync(bgTaskId, "Agent 返回空计划");
                 return;
             }
 
@@ -136,11 +150,13 @@ public sealed class ChapterAutoPlanJob
             _logger.LogInformation("[ChapterAutoPlan] Updated chapter {ChapterId}", chapterId);
             await _progressNotifier.NotifyDoneAsync(projectId, TaskType,
                 $"第 {chapter.Number} 章 计划已自动填充");
+            await _taskProgress.CompleteAsync(bgTaskId, $"第 {chapter.Number} 章写作计划已自动生成");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[ChapterAutoPlan] Unexpected error");
             await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "自动规划过程发生意外错误");
+            await _taskProgress.FailAsync(bgTaskId, ex.Message);
         }
     }
 

@@ -15,6 +15,7 @@ public sealed class ChapterBatchDraftRunResponse
     public Guid? CurrentChapterId { get; set; }
     public string Status { get; set; } = "Pending";
     public bool CancelRequested { get; set; }
+    public bool AutoFillPlan { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? FinishedAt { get; set; }

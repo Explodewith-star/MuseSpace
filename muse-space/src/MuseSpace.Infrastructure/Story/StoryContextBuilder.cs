@@ -3,6 +3,7 @@ using MuseSpace.Application.Abstractions.Memory;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Abstractions.Story;
 using MuseSpace.Domain.Entities;
+using MuseSpace.Domain.Enums;
 
 namespace MuseSpace.Infrastructure.Story;
 
@@ -37,6 +38,11 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
     private readonly IChapterRepository _chapterRepo;
     private readonly IStyleProfileRepository _styleProfileRepo;
     private readonly INovelMemorySearchService _novelMemorySearchService;
+    private readonly IChapterEventRepository _eventRepo;
+    private readonly ICanonFactRepository _factRepo;
+    private readonly INovelChunkRepository _novelChunkRepo;
+    private readonly INovelRepository _novelRepo;
+    private readonly INovelCharacterSnapshotRepository _snapshotRepo;
     private readonly ILogger<StoryContextBuilder> _logger;
 
     public StoryContextBuilder(
@@ -46,6 +52,11 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         IChapterRepository chapterRepo,
         IStyleProfileRepository styleProfileRepo,
         INovelMemorySearchService novelMemorySearchService,
+        IChapterEventRepository eventRepo,
+        ICanonFactRepository factRepo,
+        INovelChunkRepository novelChunkRepo,
+        INovelRepository novelRepo,
+        INovelCharacterSnapshotRepository snapshotRepo,
         ILogger<StoryContextBuilder> logger)
     {
         _projectRepo = projectRepo;
@@ -54,6 +65,11 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         _chapterRepo = chapterRepo;
         _styleProfileRepo = styleProfileRepo;
         _novelMemorySearchService = novelMemorySearchService;
+        _eventRepo = eventRepo;
+        _factRepo = factRepo;
+        _novelChunkRepo = novelChunkRepo;
+        _novelRepo = novelRepo;
+        _snapshotRepo = snapshotRepo;
         _logger = logger;
     }
 
@@ -88,6 +104,46 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         var styleProfile = await _styleProfileRepo.GetByProjectAsync(request.StoryProjectId, cancellationToken);
         var novelSnippets = await GetNovelContextSnippetsAsync(request, cancellationToken);
 
+        // Module D 正典事实层注入。
+        // 1. 最近事件：取最近 3 个有事件的章节，依照 “第N章 - 事件” 拼接。
+        // 2. 人物状态快照：Active（未被废弃）且已锁定的 Relationship / Identity / LifeStatus。
+        // 3. 不可重复事实：已锁定的 UniqueEvent 事实 + 所有历史不可逆事件。
+        var recentEvents = await _eventRepo.GetRecentAsync(request.StoryProjectId, chapterCount: 3, cancellationToken);
+        var chapterById = chapters.ToDictionary(c => c.Id, c => c);
+        var recentEventLines = recentEvents
+            .Select(e =>
+            {
+                var num = chapterById.TryGetValue(e.ChapterId, out var ch) ? $"第 {ch.Number} 章" : "未知章";
+                var marker = e.IsIrreversible ? "★" : "·";
+                return $"{num} {marker} [{e.EventType}] {e.EventText}";
+            })
+            .ToList();
+
+        var activeFacts = await _factRepo.GetActiveAsync(request.StoryProjectId, cancellationToken);
+        var stateFacts = activeFacts
+            .Where(f => f.IsLocked &&
+                (f.FactType == "Relationship" || f.FactType == "Identity" || f.FactType == "LifeStatus"))
+            .Select(f => $"[{f.FactType}] {f.FactKey} = {f.FactValue}")
+            .ToList();
+
+        var immutableFromFacts = activeFacts
+            .Where(f => f.IsLocked && f.FactType == "UniqueEvent")
+            .Select(f => $"★ {f.FactKey} 已发生（{f.FactValue}）")
+            .ToList();
+        // 则外带上过往不可逆事件（可能尚未被 Canon 抽取为 UniqueEvent）
+        var irreversibleEvents = await _eventRepo.GetIrreversibleAsync(request.StoryProjectId, cancellationToken);
+        var immutableFromEvents = irreversibleEvents
+            .Select(e =>
+            {
+                var num = chapterById.TryGetValue(e.ChapterId, out var ch) ? $"第 {ch.Number} 章" : "未知章";
+                return $"★ {num} [{e.EventType}] {e.EventText}";
+            })
+            .ToList();
+        var immutableFacts = immutableFromFacts.Concat(immutableFromEvents).Distinct().ToList();
+
+        // Module E：续写/外传模式上下文
+        var modeResult = await GetModeContextAsync(request, cancellationToken);
+
         return new StoryContext
         {
             ProjectSummary = project is not null
@@ -100,8 +156,153 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
             SceneGoal = request.SceneGoal,
             Conflict = request.Conflict,
             EmotionCurve = request.EmotionCurve,
-            NovelContextSnippets = novelSnippets
+            NovelContextSnippets = novelSnippets,
+            RecentEvents = recentEventLines,
+            CharacterStateFacts = stateFacts,
+            ImmutableFacts = immutableFacts,
+            GenerationModeHeader = modeResult.Header,
+            NovelEndingSnippets = modeResult.EndingSnippets,
+            BranchContextSnippets = modeResult.BranchSnippets,
+            DivergencePolicyNote = modeResult.PolicyNote,
+            NovelEndingSummary = modeResult.EndingSummary,
+            NovelStyleSummary = modeResult.StyleSummary,
+            NovelCharacterEndStates = modeResult.CharacterEndStates,
         };
+    }
+
+    // ── Module E：获取续写/支线上下文 ──────────────────────────────────
+
+    private sealed record ModeContext(
+        string? Header,
+        List<string> EndingSnippets,
+        List<string> BranchSnippets,
+        string? PolicyNote,
+        string? EndingSummary,
+        string? StyleSummary,
+        List<string> CharacterEndStates);
+
+    private async Task<ModeContext> GetModeContextAsync(
+        StoryContextRequest request, CancellationToken ct)
+    {
+        if (request.GenerationMode == GenerationMode.Original)
+            return new ModeContext(null, [], [], null, null, null, []);
+
+        string header = request.GenerationMode switch
+        {
+            GenerationMode.ContinueFromOriginal => "【创作模式：原著续写】本章为导入原著的后续延伸，请在原著结局基础上自然衔接。",
+            GenerationMode.SideStoryFromOriginal => "【创作模式：支线番外】本章为原著衍生支线/番外，角色与世界观遵循原著设定。",
+            GenerationMode.ExpandOrRewrite => "【创作模式：扩写/改写】本章对既有内容进行扩展或再创作，保持叙事连贯性。",
+            _ => string.Empty,
+        };
+
+        string? policyNote = request.DivergencePolicy switch
+        {
+            DivergencePolicy.StrictCanon => "⚠️ 严格正典约束：禁止改写原著已确定的事实、结局与人物关系，所有新增情节须在原著框架内。",
+            DivergencePolicy.SoftCanon => "提示（软正典）：允许局部补写与细节扩展，但不得推翻原著关键设定与人物命运。",
+            DivergencePolicy.AlternateTimeline => "声明（平行线）：本章为平行宇宙架空情节，可在合理范围内偏离原著走向。",
+            _ => null,
+        };
+
+        var endingSnippets = new List<string>();
+        var branchSnippets = new List<string>();
+        string? endingSummary = null;
+        string? styleSummary = null;
+        var characterEndStates = new List<string>();
+
+        if (request.SourceNovelId.HasValue)
+        {
+            try
+            {
+                // 优先读取预生成的摘要和角色末态
+                var novel = await _novelRepo.GetByIdAsync(request.SourceNovelId.Value, ct);
+                if (novel is not null)
+                {
+                    endingSummary = novel.EndingSummary;
+                    styleSummary = novel.StyleSummary;
+                }
+
+                var snapshots = await _snapshotRepo.GetByNovelAsync(request.SourceNovelId.Value, ct);
+                characterEndStates = snapshots
+                    .Select(s => $"【{s.CharacterName}】{(s.IsIrreversible ? "★ " : "")}{s.EndingState}")
+                    .ToList();
+
+                // ── 续写模式：语义检索 + tail 锚点 ────────────────────────────
+                if (request.GenerationMode == GenerationMode.ContinueFromOriginal)
+                {
+                    // 若已有结局摘要，raw chunk 只保留最后 1 个作为衔接锚点，减少 Token
+                    if (!string.IsNullOrWhiteSpace(endingSummary))
+                    {
+                        var allChunks = (await _novelChunkRepo.GetByNovelAsync(request.SourceNovelId.Value, ct))
+                            .OrderBy(c => c.ChunkIndex).ToList();
+                        var anchorChunks = allChunks.TakeLast(1).ToList();
+                        endingSnippets = anchorChunks
+                            .Select(c => TruncateWithEllipsis(c.Content, NovelSnippetMaxChars))
+                            .ToList();
+                    }
+                    else
+                    {
+                        // 无摘要降级：语义检索（top-4）+ tail（最后 2 chunk）混合
+                        var semanticResults = await _novelMemorySearchService.SearchByNovelAsync(
+                            request.SourceNovelId.Value, request.SceneGoal, topK: 4, ct: ct);
+                        var semanticSnippets = semanticResults
+                            .Where(r => r.Similarity > NovelSimilarityThreshold)
+                            .Select(r => TruncateWithEllipsis(r.Content, NovelSnippetMaxChars))
+                            .ToList();
+
+                        var allChunks = (await _novelChunkRepo.GetByNovelAsync(request.SourceNovelId.Value, ct))
+                            .OrderBy(c => c.ChunkIndex).ToList();
+                        var tailSnippets = allChunks.TakeLast(2)
+                            .Select(c => TruncateWithEllipsis(c.Content, NovelSnippetMaxChars))
+                            .ToList();
+
+                        // 合并去重（tail 在前保证时序锚点）
+                        endingSnippets = tailSnippets
+                            .Concat(semanticSnippets)
+                            .Distinct()
+                            .Take(5)
+                            .ToList();
+                    }
+                }
+                // ── 支线番外模式：语义检索（按指定范围或全文）────────────────
+                else if (request.GenerationMode == GenerationMode.SideStoryFromOriginal)
+                {
+                    if (request.OriginalRangeStart.HasValue || request.OriginalRangeEnd.HasValue)
+                    {
+                        // 指定了范围：直接切片
+                        var allChunks = (await _novelChunkRepo.GetByNovelAsync(request.SourceNovelId.Value, ct))
+                            .OrderBy(c => c.ChunkIndex).ToList();
+                        var start = request.OriginalRangeStart ?? 0;
+                        var end = request.OriginalRangeEnd ?? Math.Min(start + 5, allChunks.Count);
+                        branchSnippets = allChunks
+                            .Skip(start).Take(Math.Max(0, end - start)).Take(5)
+                            .Select(c => TruncateWithEllipsis(c.Content, NovelSnippetMaxChars))
+                            .ToList();
+                    }
+                    else
+                    {
+                        // 未指定范围：用番外主题或 SceneGoal 语义检索最相关 5 个 chunk
+                        var query = !string.IsNullOrWhiteSpace(request.BranchTopic)
+                            ? request.BranchTopic
+                            : request.SceneGoal;
+                        var semanticResults = await _novelMemorySearchService.SearchByNovelAsync(
+                            request.SourceNovelId.Value, query, topK: 5, ct: ct);
+                        branchSnippets = semanticResults
+                            .Where(r => r.Similarity > NovelSimilarityThreshold)
+                            .Select(r => TruncateWithEllipsis(r.Content, NovelSnippetMaxChars))
+                            .ToList();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[StoryContext] Mode context retrieval failed (novel={NovelId})",
+                    request.SourceNovelId);
+            }
+        }
+
+        return new ModeContext(header, endingSnippets, branchSnippets, policyNote,
+            endingSummary, styleSummary, characterEndStates);
     }
 
     private async Task<List<string>> GetNovelContextSnippetsAsync(

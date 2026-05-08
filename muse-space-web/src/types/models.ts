@@ -170,6 +170,9 @@ export interface GenerateSceneDraftRequest {
   sceneGoal: string
   conflict?: string
   emotionCurve?: string
+  referenceText?: string
+  referenceFocus?: string
+  referenceStrength?: string
 }
 
 export interface GenerateSceneDraftResponse {
@@ -220,6 +223,10 @@ export interface NovelResponse {
   startedAt?: string | null
   finishedAt?: string | null
   createdAt: string
+  // Module E+
+  endingSummary?: string | null
+  styleSummary?: string | null
+  summaryGeneratedAt?: string | null
 }
 
 // ---------- AgentSuggestion ----------

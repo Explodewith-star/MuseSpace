@@ -53,6 +53,11 @@ const projectRoutes: RouteRecordRaw[] = [
         component: () => import('@/views/projects/plot-threads/index.vue'),
       },
       {
+        path: 'canon-facts',
+        name: 'ProjectCanonFacts',
+        component: () => import('@/views/projects/canon-facts/index.vue'),
+      },
+      {
         path: 'draft',
         name: 'ProjectDraft',
         component: () => import('@/views/projects/draft/index.vue'),

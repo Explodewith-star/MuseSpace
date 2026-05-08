@@ -33,18 +33,20 @@ public class ChatController : ControllerBase
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        
+
         var systemPrompt = request.SystemPrompt ?? "You are a helpful assistant.";
-        var answer = await _llmClient.ChatAsync(systemPrompt, request.Question, cancellationToken);
-        
+        var llmResult = await _llmClient.ChatAsync(systemPrompt, request.Question, cancellationToken);
+
         stopwatch.Stop();
-        
+
         var response = new ChatResponse
         {
-            Answer = answer,
-            DurationMs = stopwatch.ElapsedMilliseconds
+            Answer = llmResult.Content,
+            DurationMs = stopwatch.ElapsedMilliseconds,
+            InputTokens = llmResult.InputTokens,
+            OutputTokens = llmResult.OutputTokens
         };
-        
+
         return Ok(ApiResponse<ChatResponse>.Ok(response));
     }
 }

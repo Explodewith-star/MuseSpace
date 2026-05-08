@@ -19,6 +19,9 @@ public class ChapterBatchDraftRun
     /// <summary>是否跳过已有草稿的章节。</summary>
     public bool SkipChaptersWithDraft { get; set; }
 
+    /// <summary>是否在生成草稿前自动调用 ChapterAutoPlanJob 填充写作计划。默认 true。</summary>
+    public bool AutoFillPlan { get; set; } = true;
+
     /// <summary>批次包含的章节总数。</summary>
     public int TotalCount { get; set; }
 

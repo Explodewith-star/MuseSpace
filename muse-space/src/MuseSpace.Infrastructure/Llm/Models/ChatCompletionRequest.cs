@@ -15,4 +15,13 @@ public sealed class ChatCompletionRequest
 
     [JsonPropertyName("stream")]
     public bool Stream { get; init; } = true;
+
+    [JsonPropertyName("stream_options")]
+    public StreamOptions? StreamOptions { get; init; } = new();
+}
+
+public sealed class StreamOptions
+{
+    [JsonPropertyName("include_usage")]
+    public bool IncludeUsage { get; init; } = true;
 }

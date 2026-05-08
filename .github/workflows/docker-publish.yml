@@ -35,7 +35,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./muse-space # MuseSpace.slnx 和 src/ 都在这里
-          file: ./muse-space/muse-space/Dockerfile
+          file: ./muse-space/deployment/Dockerfile
           push: true
           tags: ghcr.io/${{ env.OWNER }}/musespace-api:latest
           cache-from: type=gha

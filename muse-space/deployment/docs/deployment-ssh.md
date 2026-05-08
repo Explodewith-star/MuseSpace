@@ -65,15 +65,15 @@ ssh ubuntu@152.136.11.140 "echo ok"
 > 服务器上**不再需要 git clone 整个仓库**，只需要保留 `docker-compose.yml` 和 `.env` 这两份运行时配置。
 
 ```bash
-mkdir -p ~/musespace/code/muse-space/muse-space
-cd ~/musespace/code/muse-space/muse-space
+mkdir -p ~/musespace/code/muse-space/deployment
+cd ~/musespace/code/muse-space/deployment
 nano .env   # 内容参考 deployment.md 步骤 3，注意把 image 引用的 GITHUB_USERNAME 那条删掉
 ```
 
 把改造后的 `docker-compose.yml`（见下文 §4.2）通过 `scp` 传上去：
 
 ```powershell
-scp ./muse-space/muse-space/docker-compose.yml ubuntu@152.136.11.140:~/musespace/code/muse-space/muse-space/docker-compose.yml
+scp ./muse-space/deployment/docker-compose.yml ubuntu@152.136.11.140:~/musespace/code/muse-space/deployment/docker-compose.yml
 ```
 
 ### 3.3 服务器：开通 docker 权限 + 防火墙 80（与原方案相同）
@@ -173,7 +173,7 @@ volumes:
 
 param(
     [string] $Server = "ubuntu@152.136.11.140",
-    [string] $ComposeDir = "~/musespace/code/muse-space/muse-space",
+    [string] $ComposeDir = "~/musespace/code/muse-space/deployment",
     [switch] $OnlyApi,
     [switch] $OnlyWeb,
     [switch] $NoBuild
@@ -190,7 +190,7 @@ if (-not $NoBuild) {
         Step "构建 API 镜像（musespace-api:latest）"
         docker build `
             -t musespace-api:latest `
-            -f "$Repo/muse-space/muse-space/Dockerfile" `
+            -f "$Repo/muse-space/deployment/Dockerfile" `
             "$Repo/muse-space"
         if ($LASTEXITCODE) { throw "API 构建失败" }
     }
@@ -271,11 +271,11 @@ type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh ubuntu@152.136.11.140 "cat >> ~/
 
 # 2) 服务器（一次性）
 ssh ubuntu@152.136.11.140
-mkdir -p ~/musespace/code/muse-space/muse-space
-nano ~/musespace/code/muse-space/muse-space/.env  # 见 deployment.md 步骤 3
+mkdir -p ~/musespace/code/muse-space/deployment
+nano ~/musespace/code/muse-space/deployment/.env  # 见 deployment.md 步骤 3
 
 # 3) 本地传 compose
-scp .\muse-space\muse-space\docker-compose.yml ubuntu@152.136.11.140:~/musespace/code/muse-space/muse-space/docker-compose.yml
+scp .\muse-space\deployment\docker-compose.yml ubuntu@152.136.11.140:~/musespace/code/muse-space/deployment/docker-compose.yml
 
 # 4) 一键部署
 .\scripts\deploy.ps1
@@ -334,7 +334,7 @@ scp .\muse-space\muse-space\docker-compose.yml ubuntu@152.136.11.140:~/musespace
 
 - [ ] 本地生成 SSH 密钥并安装到服务器
 - [ ] 验证免密 `ssh ubuntu@152.136.11.140 "echo ok"`
-- [ ] 服务器创建 `~/musespace/code/muse-space/muse-space/`
+- [ ] 服务器创建 `~/musespace/code/muse-space/deployment/`
 - [ ] 改造 `docker-compose.yml`（去掉 ghcr 引用、删 build 段），scp 上传
 - [ ] 服务器 `.env` 内容继续沿用（只删 `GITHUB_USERNAME`）
 - [ ] 创建 `scripts/deploy.ps1`（参考 §4.3）

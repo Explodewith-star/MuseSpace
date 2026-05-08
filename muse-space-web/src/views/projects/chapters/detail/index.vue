@@ -4,9 +4,11 @@ import AppButton from '@/components/base/AppButton.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AppCard from '@/components/base/AppCard.vue'
 import AppConfirm from '@/components/base/AppConfirm.vue'
+import ChapterEventsPanel from './ChapterEventsPanel.vue'
 import { initChapterDetailState, CHAPTER_STATUS_LABELS, CHAPTER_STATUS_VARIANTS } from './hooks'
 
 const router = useRouter()
@@ -15,6 +17,7 @@ const route = useRoute()
 const {
   chapter,
   characters,
+  novels,
   characterMap,
   consistencySuggestions,
   loading,
@@ -24,6 +27,10 @@ const {
   planForm,
   draftForm,
   finalForm,
+  referenceForm,
+  generationModeForm,
+  REFERENCE_FOCUS_OPTIONS,
+  REFERENCE_STRENGTH_OPTIONS,
   startEdit,
   cancelEdit,
   saveEdit,
@@ -308,6 +315,98 @@ function severityLabel(s?: string): string {
           </div>
         </div>
 
+        <div v-if="editingSection !== 'draft'" class="mode-panel">
+          <div class="mode-panel__head">
+            <span class="field-label">创作模式</span>
+          </div>
+          <div class="mode-panel__row">
+            <div class="mode-panel__field">
+              <span class="mode-label">生成模式</span>
+              <select v-model="generationModeForm.mode" class="mode-select">
+                <option value="Original">🖊 原创（默认）</option>
+                <option value="ContinueFromOriginal">📖 原著续写</option>
+                <option value="SideStoryFromOriginal">🌿 支线番外</option>
+                <option value="ExpandOrRewrite">✏️ 扩写/改写</option>
+              </select>
+            </div>
+            <template v-if="generationModeForm.mode !== 'Original'">
+              <div class="mode-panel__field">
+                <span class="mode-label">关联原著</span>
+                <select v-model="generationModeForm.sourceNovelId" class="mode-select">
+                  <option value="">— 不指定 —</option>
+                  <option v-for="n in novels" :key="n.id" :value="n.id">{{ n.title }}</option>
+                </select>
+              </div>
+              <div class="mode-panel__field">
+                <span class="mode-label">正典约束</span>
+                <select v-model="generationModeForm.divergencePolicy" class="mode-select">
+                  <option value="StrictCanon">严格正典</option>
+                  <option value="SoftCanon">软正典（默认）</option>
+                  <option value="AlternateTimeline">平行线</option>
+                </select>
+              </div>
+            </template>
+          </div>
+          <template v-if="generationModeForm.mode === 'SideStoryFromOriginal'">
+            <div class="mode-panel__row">
+              <div class="mode-panel__field mode-panel__field--wide">
+                <span class="mode-label">番外主题</span>
+                <input
+                  v-model="generationModeForm.branchTopic"
+                  class="mode-input"
+                  placeholder="如：女主与配角在第3章相遇场景的番外"
+                />
+              </div>
+              <div class="mode-panel__field">
+                <span class="mode-label">原著 chunk 起始</span>
+                <input
+                  v-model.number="generationModeForm.originalRangeStart"
+                  class="mode-input mode-input--sm"
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                />
+              </div>
+              <div class="mode-panel__field">
+                <span class="mode-label">chunk 结束（不含）</span>
+                <input
+                  v-model.number="generationModeForm.originalRangeEnd"
+                  class="mode-input mode-input--sm"
+                  type="number"
+                  min="0"
+                  placeholder="5"
+                />
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div v-if="editingSection !== 'draft'" class="reference-panel">
+          <div class="reference-panel__head">
+            <span class="field-label">当前章节参考片段（可选）</span>
+            <span class="reference-panel__hint">只影响本次生成，不写入长期设定</span>
+          </div>
+          <div class="reference-panel__controls">
+            <AppSelect
+              v-model="referenceForm.focus"
+              :options="REFERENCE_FOCUS_OPTIONS"
+              label="参考方向"
+              :searchable="false"
+            />
+            <AppSelect
+              v-model="referenceForm.strength"
+              :options="REFERENCE_STRENGTH_OPTIONS"
+              label="参考强度"
+              :searchable="false"
+            />
+          </div>
+          <AppTextarea
+            v-model="referenceForm.text"
+            placeholder="粘贴一段希望本章参考的片段。系统只参考你选择的方向，例如情绪、对话、节奏或人物互动，不会要求 AI 复述或照搬。"
+            :rows="5"
+          />
+        </div>
+
         <template v-if="editingSection !== 'draft'">
           <div v-if="chapter.draftText" class="text-content">{{ chapter.draftText }}</div>
           <div v-else-if="chapter.conflict || chapter.emotionCurve" class="empty-hint draft-ready-hint">
@@ -401,6 +500,13 @@ function severityLabel(s?: string): string {
         </div>
       </AppCard>
     </template>
+
+    <!-- Module D 正典事实层 / 章节事件面板 -->
+    <ChapterEventsPanel
+      v-if="chapter"
+      :project-id="(route.params.id as string)"
+      :chapter-id="chapter.id"
+    />
 
     <!-- 采用草稿为定稿：覆盖二次确认 -->
     <AppConfirm
@@ -551,6 +657,35 @@ function severityLabel(s?: string): string {
 
 .draft-ready-hint i {
   color: var(--color-accent);
+}
+
+.reference-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 4%, transparent);
+}
+
+.reference-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.reference-panel__hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.reference-panel__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .plan-empty-hint em,
@@ -760,5 +895,87 @@ function severityLabel(s?: string): string {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* ── Module E：创作模式面板 ──────────────────────────────── */
+.mode-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-accent) 4%, transparent);
+}
+
+.mode-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mode-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.mode-panel__field--wide {
+  flex: 1;
+  min-width: 220px;
+}
+
+.mode-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.mode-select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.mode-select:focus {
+  border-color: var(--color-primary);
+}
+
+.mode-input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mode-input:focus {
+  border-color: var(--color-primary);
+}
+
+.mode-input--sm {
+  width: 90px;
 }
 </style>

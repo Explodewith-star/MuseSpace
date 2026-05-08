@@ -105,6 +105,7 @@ try
     app.MapControllers();
     app.MapHub<NovelImportHub>("/hubs/novel-import");
     app.MapHub<AgentProgressHub>("/hubs/agent-progress");
+    app.MapHub<TaskProgressHub>("/hubs/task-progress");
 
     app.Run();
 }

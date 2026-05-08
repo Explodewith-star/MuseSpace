@@ -6,6 +6,21 @@ import { useToast } from '@/composables/useToast'
 import type { GenerateSceneDraftResponse, LlmProviderType } from '@/types/models'
 import type { SceneDraftForm } from './types'
 
+export const REFERENCE_FOCUS_OPTIONS = [
+  { value: 'Emotion', label: '情绪氛围' },
+  { value: 'Dialogue', label: '对话方式' },
+  { value: 'NarrativeRhythm', label: '叙事节奏' },
+  { value: 'StyleTexture', label: '文风质感' },
+  { value: 'SceneStructure', label: '场景结构' },
+  { value: 'InteractionTension', label: '人物互动' },
+]
+
+export const REFERENCE_STRENGTH_OPTIONS = [
+  { value: 'Low', label: '轻度参考' },
+  { value: 'Medium', label: '中度参考' },
+  { value: 'High', label: '强参考' },
+]
+
 export function initDraftState() {
   const route = useRoute()
   const toast = useToast()
@@ -16,6 +31,9 @@ export function initDraftState() {
     sceneGoal: '',
     conflict: '',
     emotionCurve: '',
+    referenceText: '',
+    referenceFocus: 'Emotion',
+    referenceStrength: 'Medium',
   })
 
   // 从 localStorage 恢复表单
@@ -27,6 +45,9 @@ export function initDraftState() {
         if (parsed.sceneGoal) form.sceneGoal = parsed.sceneGoal
         if (parsed.conflict) form.conflict = parsed.conflict
         if (parsed.emotionCurve) form.emotionCurve = parsed.emotionCurve
+        if (parsed.referenceText) form.referenceText = parsed.referenceText
+        if (parsed.referenceFocus) form.referenceFocus = parsed.referenceFocus
+        if (parsed.referenceStrength) form.referenceStrength = parsed.referenceStrength
       }
     } catch {
       // ignore
@@ -35,7 +56,7 @@ export function initDraftState() {
 
   // 自动保存到 localStorage
   watch(
-    () => ({ sceneGoal: form.sceneGoal, conflict: form.conflict, emotionCurve: form.emotionCurve }),
+    () => ({ ...form }),
     (val) => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(val))
     },
@@ -87,6 +108,9 @@ export function initDraftState() {
         sceneGoal: form.sceneGoal,
         conflict: form.conflict || undefined,
         emotionCurve: form.emotionCurve || undefined,
+        referenceText: form.referenceText.trim() || undefined,
+        referenceFocus: form.referenceText.trim() ? form.referenceFocus : undefined,
+        referenceStrength: form.referenceText.trim() ? form.referenceStrength : undefined,
       })
       localStorage.removeItem(STORAGE_KEY)
       toast.success('草稿生成完成')
@@ -101,5 +125,7 @@ export function initDraftState() {
   return {
     form, generating, result, elapsed, generate,
     selectedProvider, selectedModel,
+    REFERENCE_FOCUS_OPTIONS,
+    REFERENCE_STRENGTH_OPTIONS,
   }
 }

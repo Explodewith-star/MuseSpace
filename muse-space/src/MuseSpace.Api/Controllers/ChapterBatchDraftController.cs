@@ -74,6 +74,9 @@ public class ChapterBatchDraftController : ControllerBase
             return BadRequest(ApiResponse<ChapterBatchDraftRunResponse>.Fail("该范围内不存在章节"));
         }
 
+        // 自动清理卡死（超过 60 分钟仍为 Pending/Running）的历史批次，防止永久阻塞
+        await _runRepo.MarkStaleRunsAsFailedAsync(projectId, ct);
+
         if (await _runRepo.HasActiveAsync(projectId, ct))
         {
             return Conflict(ApiResponse<ChapterBatchDraftRunResponse>.Fail(
@@ -88,6 +91,7 @@ public class ChapterBatchDraftController : ControllerBase
             FromNumber = request.FromNumber,
             ToNumber = request.ToNumber,
             SkipChaptersWithDraft = request.SkipChaptersWithDraft,
+            AutoFillPlan = request.AutoFillPlan,
             TotalCount = rangeChapters.Count,
             Status = ChapterBatchDraftStatus.Pending,
             CreatedAt = DateTime.UtcNow,
@@ -132,7 +136,11 @@ public class ChapterBatchDraftController : ControllerBase
         {
             return BadRequest(ApiResponse<bool>.Fail("该批次已结束，无需中止"));
         }
+        // 立即将 Status 置为 Cancelled，使 HasActiveAsync 不再拦截新任务。
+        // Hangfire Job 仍会跑完当前章节，收尾时 reload 到相同状态后正常保存。
         run.CancelRequested = true;
+        run.Status = ChapterBatchDraftStatus.Cancelled;
+        run.FinishedAt = DateTime.UtcNow;
         await _runRepo.UpdateAsync(run, ct);
         return Ok(ApiResponse<bool>.Ok(true));
     }

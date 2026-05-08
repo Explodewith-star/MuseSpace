@@ -20,6 +20,7 @@ import {
   batchGenerateDrafts,
   cancelChapterBatchRun,
   getChapterBatchRun,
+  listChapterBatchRuns,
   DEFAULT_BATCH_DRAFT_SIZE,
   HARD_MAX_BATCH_DRAFT_SIZE,
   type ChapterBatchDraftRunResponse,
@@ -35,6 +36,7 @@ const projectId = route.params.id as string
 const {
   chapters,
   loading,
+  loadChapters,
   drawerOpen,
   createForm,
   createLoading,
@@ -173,6 +175,7 @@ const batchForm = reactive({
   fromNumber: 1,
   toNumber: 1,
   skipChaptersWithDraft: false,
+  autoFillPlan: true,
 })
 const activeBatchRun = ref<ChapterBatchDraftRunResponse | null>(null)
 let batchPollTimer: ReturnType<typeof setInterval> | null = null
@@ -217,6 +220,7 @@ function openBatchModal() {
     start + DEFAULT_BATCH_DRAFT_SIZE - 1,
   )
   batchForm.skipChaptersWithDraft = false
+  batchForm.autoFillPlan = true
   batchModalOpen.value = true
 }
 
@@ -229,6 +233,7 @@ function startBatchPolling(runId: string) {
       if (!isBatchRunning.value) {
         stopBatchPolling()
         // 完成后刷新章节列表（草稿字段会变化）
+        await loadChapters()
         const evtMap: Record<string, () => void> = {
           Completed: () => toast.success(`批量生成完成：${r.completedCount}/${r.totalCount}`),
           PartiallyFailed: () =>
@@ -266,6 +271,7 @@ async function submitBatch() {
       fromNumber: batchForm.fromNumber,
       toNumber: batchForm.toNumber,
       skipChaptersWithDraft: batchForm.skipChaptersWithDraft,
+      autoFillPlan: batchForm.autoFillPlan,
     })
     activeBatchRun.value = run
     batchModalOpen.value = false
@@ -284,7 +290,10 @@ async function cancelBatch() {
   cancelBatchLoading.value = true
   try {
     await cancelChapterBatchRun(projectId, r.id)
-    toast.success('已请求中止，当前章节完成后停止后续')
+    // 立即更新本地状态，使按钮可用，无需等轮询
+    activeBatchRun.value = { ...r, status: 'Cancelled', cancelRequested: true }
+    stopBatchPolling()
+    toast.success('已中止批量任务')
   } catch {
     // ignore
   } finally {
@@ -311,9 +320,20 @@ async function refreshPendingOutline() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   joinProject(projectId)
   refreshPendingOutline()
+  // 恢复可能在进行中的批量任务（防止刷新后丢失轮询）
+  try {
+    const runs = await listChapterBatchRuns(projectId, 1)
+    const active = runs[0]
+    if (active && (active.status === 'Pending' || active.status === 'Running')) {
+      activeBatchRun.value = active
+      startBatchPolling(active.id)
+    }
+  } catch {
+    // ignore
+  }
 })
 onUnmounted(() => {
   leaveProject(projectId)
@@ -419,10 +439,9 @@ watch(outlineStage, (e) => {
             size="sm"
             variant="ghost"
             :loading="cancelBatchLoading"
-            :disabled="activeBatchRun.cancelRequested"
             @click="cancelBatch"
           >
-            {{ activeBatchRun.cancelRequested ? '已请求中止...' : '中止' }}
+            {{ activeBatchRun.cancelRequested ? '强制终止' : '中止' }}
           </AppButton>
           <AppButton v-else size="sm" variant="ghost" @click="activeBatchRun = null">
             关闭
@@ -746,6 +765,18 @@ watch(outlineStage, (e) => {
 
         <div class="batch-section">
           <label class="export-checkbox">
+            <input v-model="batchForm.autoFillPlan" type="checkbox" />
+            <span>
+              自动填充写作计划（推荐）
+              <span class="batch-option-hint"
+                >仅对无计划字段的章节生效，先填充再生草稿，质量更高</span
+              >
+            </span>
+          </label>
+        </div>
+
+        <div class="batch-section">
+          <label class="export-checkbox">
             <input v-model="batchForm.skipChaptersWithDraft" type="checkbox" />
             <span>跳过已有草稿的章节</span>
           </label>
@@ -753,7 +784,7 @@ watch(outlineStage, (e) => {
 
         <p class="batch-tip">
           <i class="i-lucide-clock" />
-          顺序串行生成，单章上限 5 分钟、整批上限 30 分钟；可中途中止。
+          顺序串行生成，单章上限 10 分钟、整批上限 45 分钟；可中途中止。
         </p>
       </div>
       <template #footer>
@@ -1176,6 +1207,13 @@ watch(outlineStage, (e) => {
 }
 .batch-tip--error {
   color: var(--color-danger, #d63838);
+}
+.batch-option-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  font-weight: 400;
 }
 
 .batch-progress-panel {

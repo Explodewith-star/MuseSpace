@@ -93,4 +93,67 @@ public sealed class NovelMemorySearchService : INovelMemorySearchService
         _logger.LogDebug("Novel search returned {Count} results for project {ProjectId}", results.Count, projectId);
         return results;
     }
+
+    public async Task<IReadOnlyList<NovelChunkSearchResult>> SearchByNovelAsync(
+        Guid novelId,
+        string queryText,
+        int topK = 5,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(queryText)) return [];
+
+        float[] queryVector;
+        try
+        {
+            queryVector = await _embeddingClient.EmbedAsync(queryText, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Embedding failed during novel search by novelId, returning empty");
+            return [];
+        }
+
+        var vectorStr = "[" + string.Join(",",
+            queryVector.Select(f => f.ToString("G9", CultureInfo.InvariantCulture))) + "]";
+
+        var connString = _configuration.GetConnectionString("DefaultConnection")!;
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT
+                ce."ChunkId",
+                nc."Content",
+                nc."ChunkIndex",
+                CAST(1.0 - (ce."Embedding" <=> $1::vector) AS float8) AS similarity
+            FROM memory.chunk_embeddings ce
+            JOIN novel_chunks nc ON nc."Id" = ce."ChunkId"
+            WHERE nc."NovelId" = $2
+              AND ce."ModelName" = $3
+            ORDER BY ce."Embedding" <=> $1::vector
+            LIMIT $4
+            """;
+
+        cmd.Parameters.Add(new NpgsqlParameter { Value = vectorStr, NpgsqlDbType = NpgsqlDbType.Text });
+        cmd.Parameters.Add(new NpgsqlParameter { Value = novelId, NpgsqlDbType = NpgsqlDbType.Uuid });
+        cmd.Parameters.Add(new NpgsqlParameter { Value = _embeddingClient.ModelName, NpgsqlDbType = NpgsqlDbType.Varchar });
+        cmd.Parameters.Add(new NpgsqlParameter { Value = topK, NpgsqlDbType = NpgsqlDbType.Integer });
+
+        var results = new List<NovelChunkSearchResult>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(new NovelChunkSearchResult
+            {
+                ChunkId = reader.GetGuid(0),
+                Content = reader.GetString(1),
+                ChunkIndex = reader.GetInt32(2),
+                Similarity = reader.GetDouble(3)
+            });
+        }
+
+        _logger.LogDebug("Novel search by novelId={NovelId} returned {Count} results", novelId, results.Count);
+        return results;
+    }
 }

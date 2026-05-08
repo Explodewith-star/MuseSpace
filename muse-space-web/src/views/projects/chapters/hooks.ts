@@ -116,6 +116,7 @@ export function initChaptersState() {
   return {
     chapters,
     loading,
+    loadChapters,
     drawerOpen,
     createForm,
     createLoading,

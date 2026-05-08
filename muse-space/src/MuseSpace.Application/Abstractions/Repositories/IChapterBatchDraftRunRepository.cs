@@ -11,5 +11,8 @@ public interface IChapterBatchDraftRunRepository
     /// <summary>项目级是否已有 Pending/Running 批次。</summary>
     Task<bool> HasActiveAsync(Guid projectId, CancellationToken ct = default);
 
+    /// <summary>将超过超时閘值仍处于 Pending/Running 的历史批次标记为 Failed（防止死锁）。</summary>
+    Task MarkStaleRunsAsFailedAsync(Guid projectId, CancellationToken ct = default);
+
     Task<List<ChapterBatchDraftRun>> ListRecentAsync(Guid projectId, int take = 10, CancellationToken ct = default);
 }

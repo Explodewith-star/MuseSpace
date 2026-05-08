@@ -19,6 +19,10 @@ public static class SuggestionCategories
     public const string ProjectSummary = "ProjectSummary";
     public const string PlotThread = "PlotThread";
 
+    // ── Module D 正典事实层 ─────────────────────────────────────
+    public const string CanonEvent = "CanonEvent";
+    public const string CanonFact = "CanonFact";
+
     /// <summary>
     /// 历史遗留的总一致性类目；新代码不再写入。仅用于兼容老数据查询。
     /// 启动时迁移会按 title 前缀拆分到 4 个 *Consistency 子类目。

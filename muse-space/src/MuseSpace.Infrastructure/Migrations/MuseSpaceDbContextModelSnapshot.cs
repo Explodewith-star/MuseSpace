@@ -44,11 +44,17 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<DateTime?>("FinishedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("InputFull")
+                        .HasColumnType("text");
+
                     b.Property<string>("InputPreview")
                         .HasColumnType("text");
 
                     b.Property<int>("InputTokens")
                         .HasColumnType("integer");
+
+                    b.Property<string>("OutputFull")
+                        .HasColumnType("text");
 
                     b.Property<string>("OutputPreview")
                         .HasColumnType("text");
@@ -136,6 +142,119 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.ToTable("agent_suggestions", (string)null);
                 });
 
+            modelBuilder.Entity("MuseSpace.Domain.Entities.BackgroundTaskRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Progress")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StatusMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("StoryProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TaskType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "Status");
+
+                    b.ToTable("background_tasks", (string)null);
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.CanonFact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FactKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("FactType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("FactValue")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("InvalidatedByChapterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ObjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SourceChapterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StoryProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoryProjectId");
+
+                    b.HasIndex("StoryProjectId", "FactType");
+
+                    b.HasIndex("StoryProjectId", "IsLocked");
+
+                    b.HasIndex("StoryProjectId", "FactType", "FactKey")
+                        .IsUnique();
+
+                    b.ToTable("canon_facts", (string)null);
+                });
+
             modelBuilder.Entity("MuseSpace.Domain.Entities.Chapter", b =>
                 {
                     b.Property<Guid>("Id")
@@ -194,6 +313,139 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.ToTable("chapters", (string)null);
                 });
 
+            modelBuilder.Entity("MuseSpace.Domain.Entities.ChapterBatchDraftRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoFillPlan")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("CancelRequested")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("CompletedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CurrentChapterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<List<Guid>>("FailedChapterIds")
+                        .HasColumnType("uuid[]");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FromNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("SkipChaptersWithDraft")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("SkippedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StoryProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ToNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoryProjectId");
+
+                    b.HasIndex("StoryProjectId", "Status");
+
+                    b.ToTable("chapter_batch_draft_runs", (string)null);
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.ChapterEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<Guid>>("ActorCharacterIds")
+                        .HasColumnType("uuid[]");
+
+                    b.Property<Guid>("ChapterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Importance")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("IsIrreversible")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StoryProjectId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<Guid>>("TargetCharacterIds")
+                        .HasColumnType("uuid[]");
+
+                    b.Property<string>("TimePoint")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChapterId");
+
+                    b.HasIndex("StoryProjectId");
+
+                    b.HasIndex("StoryProjectId", "ChapterId");
+
+                    b.HasIndex("StoryProjectId", "IsIrreversible");
+
+                    b.ToTable("chapter_events", (string)null);
+                });
+
             modelBuilder.Entity("MuseSpace.Domain.Entities.Character", b =>
                 {
                     b.Property<Guid>("Id")
@@ -247,6 +499,27 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.ToTable("characters", (string)null);
                 });
 
+            modelBuilder.Entity("MuseSpace.Domain.Entities.FeatureFlag", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("feature_flags", (string)null);
+                });
+
             modelBuilder.Entity("MuseSpace.Domain.Entities.GenerationRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -265,12 +538,18 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<string>("InputPreview")
                         .HasColumnType("text");
 
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ModelName")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
                     b.Property<string>("OutputPreview")
                         .HasColumnType("text");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("integer");
 
                     b.Property<string>("PromptName")
                         .HasMaxLength(200)
@@ -299,6 +578,9 @@ namespace MuseSpace.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int>("TotalTokens")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
@@ -316,6 +598,9 @@ namespace MuseSpace.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EndingSummary")
+                        .HasColumnType("text");
 
                     b.Property<string>("FileHash")
                         .HasMaxLength(64)
@@ -353,6 +638,12 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<Guid>("StoryProjectId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("StyleSummary")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("SummaryGeneratedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -372,6 +663,48 @@ namespace MuseSpace.Infrastructure.Migrations
                         .HasFilter("\"FileHash\" IS NOT NULL");
 
                     b.ToTable("novels", (string)null);
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.NovelCharacterSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CharacterName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EndingState")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsIrreversible")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("LinkedCharacterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("NovelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StoryProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NovelId");
+
+                    b.HasIndex("StoryProjectId");
+
+                    b.ToTable("novel_character_snapshots", (string)null);
                 });
 
             modelBuilder.Entity("MuseSpace.Domain.Entities.NovelChunk", b =>
@@ -419,6 +752,61 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.HasIndex("StoryProjectId", "IsEmbedded");
 
                     b.ToTable("novel_chunks", (string)null);
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.PlotThread", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ExpectedResolveByChapterNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Importance")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("PlantedInChapterId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<Guid>>("RelatedCharacterIds")
+                        .HasColumnType("uuid[]");
+
+                    b.Property<Guid?>("ResolvedInChapterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StoryProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Tags")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoryProjectId");
+
+                    b.HasIndex("StoryProjectId", "Status");
+
+                    b.ToTable("plot_threads", (string)null);
                 });
 
             modelBuilder.Entity("MuseSpace.Domain.Entities.Scene", b =>
@@ -670,8 +1058,41 @@ namespace MuseSpace.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("MuseSpace.Domain.Entities.CanonFact", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MuseSpace.Domain.Entities.Chapter", b =>
                 {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.ChapterBatchDraftRun", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.ChapterEvent", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.Chapter", null)
+                        .WithMany()
+                        .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
                         .WithMany()
                         .HasForeignKey("StoryProjectId")
@@ -697,6 +1118,24 @@ namespace MuseSpace.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("MuseSpace.Domain.Entities.Novel", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.NovelCharacterSnapshot", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.Novel", null)
+                        .WithMany()
+                        .HasForeignKey("NovelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.PlotThread", b =>
                 {
                     b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
                         .WithMany()

@@ -45,4 +45,23 @@ public class Novel
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    // ── Module E+：续写/番外质量增强 ──────────────────────────────────
+
+    /// <summary>
+    /// 原著大结局摘要（由 NovelEndingSummaryJob 自动生成，也可手动编辑）。
+    /// 格式：纯文本，约 200-400 字，描述主要人物的最终走向与结局。
+    /// 续写模式下优先注入此摘要，而非 raw chunk。
+    /// </summary>
+    public string? EndingSummary { get; set; }
+
+    /// <summary>
+    /// 文风摘要（由 NovelEndingSummaryJob 顺带提取，也可手动编辑）。
+    /// 格式：描述语调、句式、对话风格、描写密度等特征，约 100 字。
+    /// 续写/番外模式下注入为文风指导，弥补空白 StyleProfile。
+    /// </summary>
+    public string? StyleSummary { get; set; }
+
+    /// <summary>结局/文风摘要的最后生成时间，用于判断是否需要重新生成。</summary>
+    public DateTime? SummaryGeneratedAt { get; set; }
 }

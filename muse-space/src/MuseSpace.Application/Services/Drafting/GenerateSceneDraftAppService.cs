@@ -1,4 +1,4 @@
-using MuseSpace.Application.Abstractions.Logging;
+using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Abstractions.Skills;
 using MuseSpace.Contracts.Draft;
 using MuseSpace.Domain.Entities;
@@ -16,19 +16,19 @@ namespace MuseSpace.Application.Services.Drafting;
 ///           → IPromptTemplateProvider（从文件系统加载 .md 模板）
 ///           → IPromptTemplateRenderer（渲染 {{变量}} 占位符）
 ///           → ILlmClient            （调用语言模型）
-///     → IGenerationLogService（写入本地日志文件）
+///     → IGenerationRecordRepository（持久化生成日志到数据库）
 /// </summary>
 public sealed class GenerateSceneDraftAppService
 {
     private readonly ISkillOrchestrator _orchestrator;
-    private readonly IGenerationLogService _logService;
+    private readonly IGenerationRecordRepository _generationRepo;
 
     public GenerateSceneDraftAppService(
         ISkillOrchestrator orchestrator,
-        IGenerationLogService logService)
+        IGenerationRecordRepository generationRepo)
     {
         _orchestrator = orchestrator;
-        _logService = logService;
+        _generationRepo = generationRepo;
     }
 
     public async Task<GenerateSceneDraftResponse> ExecuteAsync(
@@ -45,7 +45,10 @@ public sealed class GenerateSceneDraftAppService
             {
                 ["SceneGoal"] = request.SceneGoal,
                 ["Conflict"] = request.Conflict ?? string.Empty,
-                ["EmotionCurve"] = request.EmotionCurve ?? string.Empty
+                ["EmotionCurve"] = request.EmotionCurve ?? string.Empty,
+                ["ReferenceText"] = request.ReferenceText?.Trim() ?? string.Empty,
+                ["ReferenceFocus"] = request.ReferenceFocus?.Trim() ?? string.Empty,
+                ["ReferenceStrength"] = request.ReferenceStrength?.Trim() ?? string.Empty
             }
         };
 
@@ -63,10 +66,13 @@ public sealed class GenerateSceneDraftAppService
             Success = result.Success,
             ErrorMessage = result.ErrorMessage,
             InputPreview = Truncate(request.SceneGoal, 200),
-            OutputPreview = Truncate(result.Output, 500)
+            OutputPreview = Truncate(result.Output, 500),
+            InputTokens = result.InputTokens,
+            OutputTokens = result.OutputTokens,
+            TotalTokens = result.InputTokens + result.OutputTokens
         };
 
-        await _logService.LogAsync(logRecord, cancellationToken);
+        await _generationRepo.AddAsync(logRecord, cancellationToken);
 
         return new GenerateSceneDraftResponse
         {

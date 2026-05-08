@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import AppToast from '@/components/base/AppToast.vue'
 import AppChangelog from '@/components/base/AppChangelog.vue'
+import TaskPanel from '@/components/base/TaskPanel.vue'
 import { changelog, CHANGELOG_VERSION } from '@/config/changelog'
 
 const STORAGE_KEY = 'muse-seen-version'
@@ -25,6 +26,7 @@ function onChangelogConfirm(visible: boolean) {
 <template>
   <router-view />
   <AppToast />
+  <TaskPanel />
   <AppChangelog
     :model-value="showChangelog"
     :changelog="changelog"

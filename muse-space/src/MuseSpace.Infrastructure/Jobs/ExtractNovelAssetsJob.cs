@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MuseSpace.Application.Abstractions.Agents;
@@ -28,6 +29,7 @@ public sealed class ExtractNovelAssetsJob
     private readonly INovelChunkRepository _chunkRepo;
     private readonly AgentSuggestionAppService _suggestionService;
     private readonly IAgentProgressNotifier _progressNotifier;
+    private readonly ITaskProgressService _taskProgress;
     private readonly LlmProviderSelector _selector;
     private readonly MuseSpaceDbContext _db;
     private readonly IFeatureFlagService _featureFlags;
@@ -39,6 +41,7 @@ public sealed class ExtractNovelAssetsJob
         INovelChunkRepository chunkRepo,
         AgentSuggestionAppService suggestionService,
         IAgentProgressNotifier progressNotifier,
+        ITaskProgressService taskProgress,
         LlmProviderSelector selector,
         MuseSpaceDbContext db,
         IFeatureFlagService featureFlags,
@@ -49,6 +52,7 @@ public sealed class ExtractNovelAssetsJob
         _chunkRepo = chunkRepo;
         _suggestionService = suggestionService;
         _progressNotifier = progressNotifier;
+        _taskProgress = taskProgress;
         _selector = selector;
         _db = db;
         _featureFlags = featureFlags;
@@ -88,6 +92,11 @@ public sealed class ExtractNovelAssetsJob
 
         await _progressNotifier.NotifyStartedAsync(novel.StoryProjectId, taskType);
 
+        var bgTaskId = await _taskProgress.StartAsync(
+            effectiveUserId, novel.StoryProjectId,
+            Domain.Enums.BackgroundTaskType.AssetExtraction,
+            $"资产提取《{novel.Title}》");
+
         try
         {
             // 1. 采样切片（均匀覆盖首、中、尾）
@@ -100,26 +109,34 @@ public sealed class ExtractNovelAssetsJob
 
             // 2. 角色提取（每次独立 RunId，避免 EF Core tracking 冲突）
             await _progressNotifier.NotifyGeneratingAsync(novel.StoryProjectId, taskType);
+            await _taskProgress.ReportProgressAsync(bgTaskId, 20, "正在提取角色...");
             await ExtractCharactersAsync(sampledText, novel.StoryProjectId, novelId,
                 new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId });
 
             // 3. 世界观提取
             await _progressNotifier.NotifyGeneratingAsync(novel.StoryProjectId, taskType);
+            await _taskProgress.ReportProgressAsync(bgTaskId, 50, "正在提取世界观...");
             await ExtractWorldRulesAsync(sampledText, novel.StoryProjectId, novelId,
                 new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId });
 
             // 4. 文风提取
             await _progressNotifier.NotifyGeneratingAsync(novel.StoryProjectId, taskType);
+            await _taskProgress.ReportProgressAsync(bgTaskId, 80, "正在提取文风...");
             await ExtractStyleProfileAsync(sampledText, novel.StoryProjectId, novelId,
                 new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId });
 
             await _progressNotifier.NotifyDoneAsync(novel.StoryProjectId, taskType, "资产提取完成，请前往建议中心查看");
+            await _taskProgress.CompleteAsync(bgTaskId, "资产提取完成");
             _logger.LogInformation("[AssetExtract] Completed for novel {NovelId}", novelId);
+
+            // 链式触发：结局摘要 + 角色末态快照生成（Module E+）
+            BackgroundJob.Enqueue<NovelEndingSummaryJob>(j => j.ExecuteAsync(novelId, userId, null));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AssetExtract] Failed for novel {NovelId}", novelId);
             await _progressNotifier.NotifyFailedAsync(novel.StoryProjectId, taskType, "资产提取失败：" + ex.Message);
+            await _taskProgress.FailAsync(bgTaskId, "资产提取失败：" + ex.Message);
         }
     }
 

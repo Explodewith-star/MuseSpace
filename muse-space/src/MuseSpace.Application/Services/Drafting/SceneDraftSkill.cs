@@ -43,9 +43,25 @@ public sealed class SceneDraftSkill : ISkill
             var contextRequest = new StoryContextRequest
             {
                 StoryProjectId = request.StoryProjectId,
+                ChapterId = TryParseGuid(request.Parameters.GetValueOrDefault("ChapterId")),
                 SceneGoal = request.Parameters.GetValueOrDefault("SceneGoal", string.Empty),
                 Conflict = request.Parameters.GetValueOrDefault("Conflict"),
-                EmotionCurve = request.Parameters.GetValueOrDefault("EmotionCurve")
+                EmotionCurve = request.Parameters.GetValueOrDefault("EmotionCurve"),
+                // Module E
+                GenerationMode = Enum.TryParse<Domain.Enums.GenerationMode>(
+                    request.Parameters.GetValueOrDefault("GenerationMode"), out var gm)
+                    ? gm : Domain.Enums.GenerationMode.Original,
+                SourceNovelId = TryParseGuid(request.Parameters.GetValueOrDefault("SourceNovelId")),
+                ContinuationStartChapterNumber = int.TryParse(
+                    request.Parameters.GetValueOrDefault("ContinuationStartChapterNumber"), out var csn) ? csn : null,
+                OriginalRangeStart = int.TryParse(
+                    request.Parameters.GetValueOrDefault("OriginalRangeStart"), out var ors) ? ors : null,
+                OriginalRangeEnd = int.TryParse(
+                    request.Parameters.GetValueOrDefault("OriginalRangeEnd"), out var ore) ? ore : null,
+                BranchTopic = request.Parameters.GetValueOrDefault("BranchTopic"),
+                DivergencePolicy = Enum.TryParse<Domain.Enums.DivergencePolicy>(
+                    request.Parameters.GetValueOrDefault("DivergencePolicy"), out var dp)
+                    ? dp : Domain.Enums.DivergencePolicy.SoftCanon,
             };
             var storyContext = await _contextBuilder.BuildAsync(contextRequest, cancellationToken);
 
@@ -65,7 +81,33 @@ public sealed class SceneDraftSkill : ISkill
                 ["emotion_curve"] = storyContext.EmotionCurve ?? string.Empty,
                 ["novel_context"] = storyContext.NovelContextSnippets.Count > 0
                     ? string.Join("\n\n---\n\n", storyContext.NovelContextSnippets)
-                    : string.Empty
+                    : string.Empty,
+                ["reference_text"] = request.Parameters.GetValueOrDefault("ReferenceText", string.Empty),
+                ["reference_focus"] = BuildReferenceFocusText(
+                    request.Parameters.GetValueOrDefault("ReferenceFocus", string.Empty)),
+                ["reference_strength"] = BuildReferenceStrengthText(
+                    request.Parameters.GetValueOrDefault("ReferenceStrength", string.Empty)),
+                ["timeline_events"] = storyContext.RecentEvents.Count > 0
+                    ? string.Join("\n", storyContext.RecentEvents)
+                    : string.Empty,
+                ["character_states"] = storyContext.CharacterStateFacts.Count > 0
+                    ? string.Join("\n", storyContext.CharacterStateFacts)
+                    : string.Empty,
+                ["immutable_facts"] = storyContext.ImmutableFacts.Count > 0
+                    ? string.Join("\n", storyContext.ImmutableFacts)
+                    : string.Empty,
+                // Module E variables
+                ["generation_mode_header"] = storyContext.GenerationModeHeader ?? string.Empty,
+                ["novel_ending"] = BuildNovelEndingSection(
+                    storyContext.NovelEndingSummary, storyContext.NovelEndingSnippets),
+                ["novel_character_end_states"] = storyContext.NovelCharacterEndStates.Count > 0
+                    ? string.Join("\n", storyContext.NovelCharacterEndStates)
+                    : string.Empty,
+                ["novel_style_summary"] = storyContext.NovelStyleSummary ?? string.Empty,
+                ["branch_context"] = BuildBranchContextSection(
+                    request.Parameters.GetValueOrDefault("BranchTopic"),
+                    storyContext.BranchContextSnippets),
+                ["divergence_policy"] = storyContext.DivergencePolicyNote ?? string.Empty,
             };
 
             // 4. Render prompts
@@ -73,10 +115,10 @@ public sealed class SceneDraftSkill : ISkill
             var userPrompt = _promptRenderer.RenderUserPrompt(template, variables);
 
             // 5. Call LLM
-            var output = await _llmClient.ChatAsync(systemPrompt, userPrompt, cancellationToken);
+            var llmResult = await _llmClient.ChatAsync(systemPrompt, userPrompt, cancellationToken);
 
             // 6. 宽松解析 JSON 输出：成功则提取 scene_text，失败则保留原始文本
-            var parsedOutput = TryExtractSceneText(output);
+            var parsedOutput = TryExtractSceneText(llmResult.Content);
 
             stopwatch.Stop();
 
@@ -86,7 +128,9 @@ public sealed class SceneDraftSkill : ISkill
                 Output = parsedOutput,
                 SkillName = Name,
                 PromptVersion = template.Version,
-                DurationMs = stopwatch.ElapsedMilliseconds
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                InputTokens = llmResult.InputTokens,
+                OutputTokens = llmResult.OutputTokens
             };
         }
         catch (Exception ex)
@@ -127,6 +171,52 @@ public sealed class SceneDraftSkill : ISkill
         }
 
         return rawOutput;
+    }
+
+    private static string BuildReferenceFocusText(string value) => value switch
+    {
+        "Emotion" => "主要参考情绪氛围，例如紧张、暧昧、压抑、悲伤或释然的推进方式。",
+        "Dialogue" => "主要参考对话方式，例如句子长短、停顿、含蓄程度、攻防节奏和人物回应方式。",
+        "NarrativeRhythm" => "主要参考叙事节奏，例如铺垫、转场、悬念释放和段落推进速度。",
+        "StyleTexture" => "主要参考文风质感，例如描写密度、句式倾向、画面感和语言颗粒度。",
+        "SceneStructure" => "主要参考场景结构，例如开场、推进、转折、收束的组织方式。",
+        "InteractionTension" => "主要参考人物互动张力，例如关系拉扯、潜台词、试探与情绪变化。",
+        _ => string.Empty
+    };
+
+    private static string BuildReferenceStrengthText(string value) => value switch
+    {
+        "Low" => "轻度参考：只吸收大方向，优先遵循本章大纲与项目事实。",
+        "High" => "强参考：明显吸收所选参考维度，但仍不得复述、改写或照搬片段内容。",
+        "Medium" => "中度参考：在所选维度上适当靠近参考片段，同时保持本项目原有设定和剧情。",
+        _ => string.Empty
+    };
+
+    private static Guid? TryParseGuid(string? raw)
+        => Guid.TryParse(raw, out var g) ? g : null;
+
+    private static string BuildBranchContextSection(string? branchTopic, List<string> snippets)
+    {
+        if (string.IsNullOrWhiteSpace(branchTopic) && snippets.Count == 0)
+            return string.Empty;
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(branchTopic))
+            parts.Add($"番外主题：{branchTopic}");
+        if (snippets.Count > 0)
+            parts.Add(string.Join("\n\n---\n\n", snippets));
+        return string.Join("\n\n", parts);
+    }
+
+    private static string BuildNovelEndingSection(string? endingSummary, List<string> rawSnippets)
+    {
+        if (!string.IsNullOrWhiteSpace(endingSummary))
+            return $"【大结局摘要】\n{endingSummary}" +
+                (rawSnippets.Count > 0
+                    ? $"\n\n【衔接锚点（紧邻原著末段）】\n{string.Join("\n\n---\n\n", rawSnippets)}"
+                    : string.Empty);
+        if (rawSnippets.Count > 0)
+            return string.Join("\n\n---\n\n", rawSnippets);
+        return string.Empty;
     }
 
     /// <summary>

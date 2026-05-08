@@ -18,6 +18,15 @@ public static class FeatureFlagKeys
 
     /// <summary>批量章节草稿生成总开关。</summary>
     public const string BatchDraftEnabled = "batch-draft-enabled";
+
+    /// <summary>草稿生成后是否自动抽取章节事件（Module D 时间线）。</summary>
+    public const string AutoChapterEventExtraction = "auto-chapter-event-extraction";
+
+    /// <summary>草稿生成后是否自动抽取 Canon 固定事实（Module D 状态真相）。</summary>
+    public const string AutoCanonFactExtraction = "auto-canon-fact-extraction";
+
+    /// <summary>原著导入完成后是否自动生成结局摘要与角色末态快照（Module E+）。</summary>
+    public const string AutoNovelEndingSummary = "auto-novel-ending-summary";
 }
 
 /// <summary>

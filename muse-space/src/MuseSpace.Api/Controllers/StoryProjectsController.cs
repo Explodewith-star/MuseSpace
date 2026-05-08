@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Services.Story;
 using MuseSpace.Contracts.Common;
 using MuseSpace.Contracts.Story;
@@ -11,9 +12,15 @@ namespace MuseSpace.Api.Controllers;
 public class StoryProjectsController : ControllerBase
 {
     private readonly StoryProjectAppService _service;
+    private readonly IGenerationRecordRepository _generationRepo;
 
-    public StoryProjectsController(StoryProjectAppService service)
-        => _service = service;
+    public StoryProjectsController(
+        StoryProjectAppService service,
+        IGenerationRecordRepository generationRepo)
+    {
+        _service = service;
+        _generationRepo = generationRepo;
+    }
 
     /// <summary>解析当前请求的 userId：有 JWT 则取其 NameIdentifier，无 JWT 则返回 null（游客）</summary>
     private Guid? CurrentUserId =>
@@ -50,5 +57,13 @@ public class StoryProjectsController : ControllerBase
         var deleted = await _service.DeleteAsync(id, cancellationToken);
         if (!deleted) return NotFound(ApiResponse<bool>.Fail("Project not found"));
         return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    [HttpGet("{id:guid}/generation-stats")]
+    public async Task<ActionResult<ApiResponse<ProjectGenerationStats>>> GetGenerationStats(
+        Guid id, CancellationToken cancellationToken)
+    {
+        var stats = await _generationRepo.GetProjectStatsAsync(id, cancellationToken);
+        return Ok(ApiResponse<ProjectGenerationStats>.Ok(stats));
     }
 }

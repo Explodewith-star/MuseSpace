@@ -5,6 +5,8 @@ using MuseSpace.Application.Abstractions.Llm;
 using MuseSpace.Application.Abstractions.Notifications;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Application.Abstractions.Skills;
+using MuseSpace.Contracts.Chapters;
+using MuseSpace.Domain.Entities;
 using MuseSpace.Domain.Enums;
 using MuseSpace.Infrastructure.Persistence;
 
@@ -22,6 +24,8 @@ public sealed class ChapterDraftJob
     private readonly ISkillOrchestrator _orchestrator;
     private readonly IChapterRepository _chapterRepo;
     private readonly IAgentProgressNotifier _progressNotifier;
+    private readonly ITaskProgressService _taskProgress;
+    private readonly IGenerationRecordRepository _generationRepo;
     private readonly LlmProviderSelector _selector;
     private readonly MuseSpaceDbContext _db;
     private readonly ILogger<ChapterDraftJob> _logger;
@@ -30,6 +34,8 @@ public sealed class ChapterDraftJob
         ISkillOrchestrator orchestrator,
         IChapterRepository chapterRepo,
         IAgentProgressNotifier progressNotifier,
+        ITaskProgressService taskProgress,
+        IGenerationRecordRepository generationRepo,
         LlmProviderSelector selector,
         MuseSpaceDbContext db,
         ILogger<ChapterDraftJob> logger)
@@ -37,17 +43,28 @@ public sealed class ChapterDraftJob
         _orchestrator = orchestrator;
         _chapterRepo = chapterRepo;
         _progressNotifier = progressNotifier;
+        _taskProgress = taskProgress;
+        _generationRepo = generationRepo;
         _selector = selector;
         _db = db;
         _logger = logger;
     }
 
-    public async Task ExecuteAsync(Guid projectId, Guid chapterId, Guid? userId)
+    public async Task ExecuteAsync(
+        Guid projectId,
+        Guid chapterId,
+        Guid? userId,
+        GenerateChapterDraftRequest? options = null)
     {
         _logger.LogInformation("[ChapterDraft] Start chapter={ChapterId}", chapterId);
 
         await ApplyUserLlmPreferenceAsync(userId);
         await _progressNotifier.NotifyStartedAsync(projectId, TaskType);
+
+        var bgTaskId = await _taskProgress.StartAsync(
+            userId, projectId,
+            Domain.Enums.BackgroundTaskType.ChapterDraftGeneration,
+            $"生成章节草稿");
 
         try
         {
@@ -55,6 +72,7 @@ public sealed class ChapterDraftJob
             if (chapter is null)
             {
                 await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "章节不存在");
+                await _taskProgress.FailAsync(bgTaskId, "章节不存在");
                 return;
             }
 
@@ -81,10 +99,23 @@ public sealed class ChapterDraftJob
                     ["SceneGoal"] = sceneGoal,
                     ["Conflict"] = chapter.Conflict ?? string.Empty,
                     ["EmotionCurve"] = chapter.EmotionCurve ?? string.Empty,
+                    ["ChapterId"] = chapterId.ToString(),
+                    ["ReferenceText"] = options?.ReferenceText?.Trim() ?? string.Empty,
+                    ["ReferenceFocus"] = options?.ReferenceFocus?.Trim() ?? string.Empty,
+                    ["ReferenceStrength"] = options?.ReferenceStrength?.Trim() ?? string.Empty,
+                    // Module E
+                    ["GenerationMode"] = options?.GenerationMode?.Trim() ?? string.Empty,
+                    ["SourceNovelId"] = options?.SourceNovelId?.ToString() ?? string.Empty,
+                    ["ContinuationStartChapterNumber"] = options?.ContinuationStartChapterNumber?.ToString() ?? string.Empty,
+                    ["OriginalRangeStart"] = options?.OriginalRangeStart?.ToString() ?? string.Empty,
+                    ["OriginalRangeEnd"] = options?.OriginalRangeEnd?.ToString() ?? string.Empty,
+                    ["BranchTopic"] = options?.BranchTopic?.Trim() ?? string.Empty,
+                    ["DivergencePolicy"] = options?.DivergencePolicy?.Trim() ?? string.Empty,
                 },
             };
 
             await _progressNotifier.NotifyGeneratingAsync(projectId, TaskType);
+            await _taskProgress.ReportProgressAsync(bgTaskId, 30, "正在调用 AI 生成...");
 
             var result = await _orchestrator.ExecuteAsync(request);
 
@@ -92,6 +123,7 @@ public sealed class ChapterDraftJob
             {
                 await _progressNotifier.NotifyFailedAsync(projectId, TaskType,
                     result.ErrorMessage ?? "草稿生成失败");
+                await _taskProgress.FailAsync(bgTaskId, result.ErrorMessage ?? "草稿生成失败");
                 return;
             }
 
@@ -100,23 +132,48 @@ public sealed class ChapterDraftJob
                 chapter.Status = ChapterStatus.Drafting;
             await _chapterRepo.SaveAsync(projectId, chapter);
 
+            // 记录生成日志（含 Token 用量）
+            await _generationRepo.AddAsync(new GenerationRecord
+            {
+                RequestId = Guid.NewGuid().ToString("N")[..12],
+                StoryProjectId = projectId,
+                TaskType = TaskType,
+                SkillName = result.SkillName,
+                PromptVersion = result.PromptVersion,
+                ModelName = _selector.ActiveModel ?? "default",
+                DurationMs = result.DurationMs,
+                Success = result.Success,
+                ErrorMessage = result.ErrorMessage,
+                InputPreview = sceneGoal.Length > 200 ? sceneGoal[..200] + "..." : sceneGoal,
+                OutputPreview = result.Output.Length > 500 ? result.Output[..500] + "..." : result.Output,
+                InputTokens = result.InputTokens,
+                OutputTokens = result.OutputTokens,
+                TotalTokens = result.InputTokens + result.OutputTokens
+            });
+
             _logger.LogInformation("[ChapterDraft] Saved draft for chapter {ChapterId}, len={Len}",
                 chapterId, result.Output.Length);
             await _progressNotifier.NotifyDoneAsync(projectId, TaskType,
                 $"第 {chapter.Number} 章 草稿已生成");
+            await _taskProgress.CompleteAsync(bgTaskId, $"第 {chapter.Number} 章 草稿已生成");
 
-            // 链式触发：文风一致性 + 角色一致性 + 伏笔追踪
+            // 链式触发：文风一致性 + 角色一致性 + 伏笔追踪 + Module D 事件/事实抽取
             BackgroundJob.Enqueue<StyleConsistencyCheckJob>(
                 j => j.ExecuteAsync(projectId, chapterId, result.Output, userId));
             BackgroundJob.Enqueue<CharacterConsistencyCheckJob>(
                 j => j.ExecuteAsync(projectId, result.Output, userId));
             BackgroundJob.Enqueue<PlotThreadTrackingJob>(
                 j => j.ExecuteAsync(projectId, chapterId, userId));
+            BackgroundJob.Enqueue<ChapterEventExtractionJob>(
+                j => j.ExecuteAsync(projectId, chapterId, userId));
+            BackgroundJob.Enqueue<CanonFactExtractionJob>(
+                j => j.ExecuteAsync(projectId, chapterId, userId));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[ChapterDraft] Unexpected error");
             await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "草稿生成发生意外错误");
+            await _taskProgress.FailAsync(bgTaskId, "草稿生成发生意外错误");
         }
     }
 

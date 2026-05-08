@@ -25,15 +25,15 @@ public sealed class RoutingLlmClient : ILlmClient
         _selector = selector;
     }
 
-    public Task<string> ChatAsync(
+    public Task<LlmChatResult> ChatAsync(
         string systemPrompt,
         string userPrompt,
         CancellationToken cancellationToken = default)
         => _selector.Active switch
         {
             LlmProviderType.DeepSeek => _deepSeek.ChatAsync(systemPrompt, userPrompt, cancellationToken),
-            LlmProviderType.Venice   => _venice.ChatAsync(systemPrompt, userPrompt, cancellationToken),
-            _                        => _openRouter.ChatAsync(systemPrompt, userPrompt, cancellationToken),
+            LlmProviderType.Venice => _venice.ChatAsync(systemPrompt, userPrompt, cancellationToken),
+            _ => _openRouter.ChatAsync(systemPrompt, userPrompt, cancellationToken),
         };
 }
 

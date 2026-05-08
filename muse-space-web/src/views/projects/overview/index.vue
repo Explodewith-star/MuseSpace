@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppCard from '@/components/base/AppCard.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
@@ -6,6 +7,7 @@ import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AgentLauncher from '@/components/base/AgentLauncher.vue'
 import PendingSuggestionPanel from '@/components/base/PendingSuggestionPanel.vue'
 import { useProjectStore } from '@/store/modules/project'
+import { getProjectGenerationStats, type ProjectGenerationStats } from '@/api/projects'
 
 const route = useRoute()
 const projectStore = useProjectStore()
@@ -27,6 +29,24 @@ const workflowSteps = [
   { step: '⑤', label: '填充计划', desc: '进入章节 → 自动填充写作计划', icon: 'i-lucide-clipboard-list', to: 'chapters' },
   { step: '⑥', label: '生成草稿', desc: '一键生成草稿，审查文风一致性', icon: 'i-lucide-sparkles', to: 'chapters' },
 ]
+
+const genStats = ref<ProjectGenerationStats | null>(null)
+const statsLoading = ref(true)
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
+
+onMounted(async () => {
+  try {
+    genStats.value = await getProjectGenerationStats(projectId)
+  }
+  finally {
+    statsLoading.value = false
+  }
+})
 </script>
 
 <template>
@@ -53,6 +73,41 @@ const workflowSteps = [
       title="项目摘要与下一步建议"
       :default-open="true"
     />
+
+    <!-- Token 用量仪表盘 -->
+    <AppCard v-if="statsLoading || (genStats && genStats.totalCalls > 0)" class="stats-card">
+      <div class="stats-header">
+        <i class="i-lucide-bar-chart-3 stats-header-icon" />
+        <div>
+          <p class="stats-title">生成用量统计</p>
+          <p class="stats-subtitle">本项目 LLM 调用汇总</p>
+        </div>
+      </div>
+      <div v-if="statsLoading" class="stats-grid">
+        <AppSkeleton v-for="i in 4" :key="i" width="100%" height="60px" />
+      </div>
+      <div v-else-if="genStats" class="stats-grid">
+        <div class="stat-item">
+          <span class="stat-value">{{ genStats.totalCalls }}</span>
+          <span class="stat-label">总调用</span>
+          <span class="stat-sub">成功 {{ genStats.succeededCalls }} / 失败 {{ genStats.failedCalls }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ formatTokens(genStats.totalTokens) }}</span>
+          <span class="stat-label">总 Token</span>
+          <span class="stat-sub">输入 {{ formatTokens(genStats.totalInputTokens) }} / 输出 {{ formatTokens(genStats.totalOutputTokens) }}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ (genStats.avgDurationMs / 1000).toFixed(1) }}s</span>
+          <span class="stat-label">平均耗时</span>
+          <span class="stat-sub">总计 {{ (genStats.totalDurationMs / 1000).toFixed(0) }}s</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ genStats.totalCalls > 0 ? ((genStats.succeededCalls / genStats.totalCalls) * 100).toFixed(0) : 0 }}%</span>
+          <span class="stat-label">成功率</span>
+        </div>
+      </div>
+    </AppCard>
 
     <!-- 项目信息卡 -->
     <AppCard class="info-card">
@@ -310,5 +365,78 @@ const workflowSteps = [
   color: var(--color-text-muted);
   margin: 0;
   line-height: 1.4;
+}
+
+/* Token 用量统计卡片 */
+.stats-card {
+  border-left: 3px solid var(--color-info, #3b82f6);
+}
+
+.stats-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stats-header-icon {
+  font-size: 22px;
+  color: var(--color-info, #3b82f6);
+  flex-shrink: 0;
+}
+
+.stats-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 2px;
+}
+
+.stats-subtitle {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 8px;
+  background-color: var(--color-bg-elevated);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.stat-sub {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  opacity: 0.8;
 }
 </style>

@@ -30,7 +30,7 @@ public sealed class VeniceLlmClient
         _logger = logger;
     }
 
-    public async Task<string> ChatAsync(
+    public async Task<LlmChatResult> ChatAsync(
         string systemPrompt,
         string userPrompt,
         CancellationToken cancellationToken = default)
@@ -75,15 +75,21 @@ public sealed class VeniceLlmClient
                 $"Venice API returned HTTP {(int)response.StatusCode}: {errorBody}");
         }
 
-        var content = await SseStreamReader.ReadAsync(response, cancellationToken);
+        var result = await SseStreamReader.ReadAsync(response, cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(content))
+        if (string.IsNullOrWhiteSpace(result.Content))
         {
             _logger.LogWarning("Venice returned empty content");
-            return string.Empty;
+            return new LlmChatResult();
         }
 
-        _logger.LogInformation("Venice returned {Length} chars", content.Length);
-        return content;
+        _logger.LogInformation("Venice returned {Length} chars, tokens in={In} out={Out}",
+            result.Content.Length, result.PromptTokens, result.CompletionTokens);
+        return new LlmChatResult
+        {
+            Content = result.Content,
+            InputTokens = result.PromptTokens,
+            OutputTokens = result.CompletionTokens
+        };
     }
 }

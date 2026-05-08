@@ -54,8 +54,27 @@ export function autoPlanChapter(projectId: string, chapterId: string): Promise<s
 }
 
 /** 触发章节草稿生成 */
-export function generateChapterDraft(projectId: string, chapterId: string): Promise<string> {
-  return request.post(`/projects/${projectId}/chapters/${chapterId}/generate-draft`)
+export interface GenerateChapterDraftRequest {
+  referenceText?: string
+  referenceFocus?: string
+  referenceStrength?: string
+  // Module E：续写/外传模式
+  generationMode?: 'Original' | 'ContinueFromOriginal' | 'SideStoryFromOriginal' | 'ExpandOrRewrite'
+  sourceNovelId?: string
+  continuationStartChapterNumber?: number
+  originalRangeStart?: number
+  originalRangeEnd?: number
+  relatedCharacterIds?: string[]
+  branchTopic?: string
+  divergencePolicy?: 'StrictCanon' | 'SoftCanon' | 'AlternateTimeline'
+}
+
+export function generateChapterDraft(
+  projectId: string,
+  chapterId: string,
+  data?: GenerateChapterDraftRequest,
+): Promise<string> {
+  return request.post(`/projects/${projectId}/chapters/${chapterId}/generate-draft`, data ?? {})
 }
 
 /** 一键采用为定稿的响应体 */
@@ -87,12 +106,14 @@ export function adoptChapterDraft(
 
 // ─── A3 批量章节草稿生成 ───────────────────────────────────────────────────
 
-/** 批量生成草稿请求体。 */
+/// <summary>批量生成草稿请求体。</summary>
 export interface BatchGenerateDraftRequest {
   fromNumber: number
   toNumber: number
   /** 是否跳过已有草稿的章节，默认 false（覆盖原草稿）。 */
   skipChaptersWithDraft?: boolean
+  /** 是否在生成草稿前自动填充写作计划，默认 true。 */
+  autoFillPlan?: boolean
 }
 
 /** 批量生成任务的运行状态。 */

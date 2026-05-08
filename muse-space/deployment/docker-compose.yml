@@ -4,8 +4,8 @@ services:
     # 格式：ghcr.io/你的GitHub用户名(小写)/musespace-api:latest
     image: ghcr.io/${GITHUB_USERNAME}/musespace-api:latest
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deployment/Dockerfile
     container_name: musespace-api
     restart: unless-stopped
     # 不对外暴露端口，只在内部网络供 web 访问
@@ -35,7 +35,7 @@ services:
   web:
     image: ghcr.io/${GITHUB_USERNAME}/musespace-web:latest
     build:
-      context: ../muse-space-web
+      context: ../../muse-space-web
       dockerfile: Dockerfile
     container_name: musespace-web
     restart: unless-stopped

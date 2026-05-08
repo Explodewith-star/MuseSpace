@@ -129,6 +129,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IActiveAgentTaskRegistry, InMemoryActiveAgentTaskRegistry>();
         services.AddScoped<IAgentProgressNotifier, SignalRAgentProgressNotifier>();
 
+        // ── Task progress service (统一后台任务跟踪) ─────────────────────────
+        services.AddScoped<ITaskProgressService, TaskProgressService>();
+
         // ── 启动一次性数据迁移（拆分老 Consistency 类目） ──────────────────────
         services.AddHostedService<LegacyConsistencyCategoryMigrationHostedService>();
         // ── 启动 idempotent 建表（plot_threads） ───────────────────────────────
@@ -153,6 +156,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(StyleConsistencyAgentDefinition.Create());
         services.AddSingleton(ProjectSummaryAgentDefinition.Create());
         services.AddSingleton(PlotThreadTrackingAgentDefinition.Create());
+        services.AddSingleton(ChapterEventExtractionAgentDefinition.Create());
+        services.AddSingleton(CanonFactExtractionAgentDefinition.Create());
         // Agent 工具注册（P0 暂无工具，P1 扩展时通过 Scrutor 或手动注册 IAgentTool）
         // AgentRunner（Scoped：依赖 DbContext + ILlmClient 都是 Scoped）
         services.AddScoped<IAgentRunner, AgentRunner>();
@@ -187,6 +192,7 @@ public static class ServiceCollectionExtensions
         // Scrutor：扫描 Infrastructure 程序集
         // - Ef*Repository → 按接口注册（替换原有 JSON 仓储）
         // - StoryContextBuilder → 按接口注册
+        // - *Job → 注册为自身（Hangfire JobActivator 按具体类型解析）
         services.Scan(scan => scan
             .FromAssemblyOf<StoryContextBuilder>()
             .AddClasses(c => c.Where(t =>
@@ -197,6 +203,9 @@ public static class ServiceCollectionExtensions
                 t.Name == nameof(StoryContextBuilder) ||
                 t.Name == nameof(NovelMemorySearchService)))
                 .AsImplementedInterfaces()
+                .WithScopedLifetime()
+            .AddClasses(c => c.Where(t => t.Name.EndsWith("Job")))
+                .AsSelf()
                 .WithScopedLifetime());
 
         return services;

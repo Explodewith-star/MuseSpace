@@ -5,7 +5,18 @@ using MuseSpace.Infrastructure.Llm.Models;
 namespace MuseSpace.Infrastructure.Llm;
 
 /// <summary>
-/// 读取 OpenAI 兼容 SSE 流，将所有 delta.content 拼接为完整字符串。
+/// SSE 流读取结果，包含拼接内容和 Token 用量。
+/// </summary>
+internal sealed class SseReadResult
+{
+    public string Content { get; init; } = string.Empty;
+    public int PromptTokens { get; init; }
+    public int CompletionTokens { get; init; }
+}
+
+/// <summary>
+/// 读取 OpenAI 兼容 SSE 流，将所有 delta.content 拼接为完整字符串，
+/// 并从最后一个 chunk 中提取 usage 信息。
 /// </summary>
 internal static class SseStreamReader
 {
@@ -14,11 +25,12 @@ internal static class SseStreamReader
         PropertyNameCaseInsensitive = true
     };
 
-    public static async Task<string> ReadAsync(
+    public static async Task<SseReadResult> ReadAsync(
         HttpResponseMessage response,
         CancellationToken cancellationToken)
     {
         var sb = new StringBuilder();
+        ChatCompletionUsage? usage = null;
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream, Encoding.UTF8);
@@ -49,8 +61,17 @@ internal static class SseStreamReader
             var content = chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
             if (!string.IsNullOrEmpty(content))
                 sb.Append(content);
+
+            // 捕获最后一个 chunk 中的 usage 信息
+            if (chunk?.Usage is not null)
+                usage = chunk.Usage;
         }
 
-        return sb.ToString();
+        return new SseReadResult
+        {
+            Content = sb.ToString(),
+            PromptTokens = usage?.PromptTokens ?? 0,
+            CompletionTokens = usage?.CompletionTokens ?? 0
+        };
     }
 }

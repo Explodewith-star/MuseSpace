@@ -24,6 +24,9 @@ public sealed class ChatCompletionStreamChunk
 {
     [JsonPropertyName("choices")]
     public List<ChatStreamChoice>? Choices { get; init; }
+
+    [JsonPropertyName("usage")]
+    public ChatCompletionUsage? Usage { get; init; }
 }
 
 public sealed class ChatStreamChoice
@@ -36,4 +39,19 @@ public sealed class ChatDelta
 {
     [JsonPropertyName("content")]
     public string? Content { get; init; }
+}
+
+/// <summary>
+/// Token 用量统计（OpenAI 兼容格式）。
+/// </summary>
+public sealed class ChatCompletionUsage
+{
+    [JsonPropertyName("prompt_tokens")]
+    public int PromptTokens { get; init; }
+
+    [JsonPropertyName("completion_tokens")]
+    public int CompletionTokens { get; init; }
+
+    [JsonPropertyName("total_tokens")]
+    public int TotalTokens { get; init; }
 }
