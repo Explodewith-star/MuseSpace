@@ -8,6 +8,7 @@ using MuseSpace.Application.Abstractions.Skills;
 using MuseSpace.Contracts.Chapters;
 using MuseSpace.Domain.Entities;
 using MuseSpace.Domain.Enums;
+using MuseSpace.Infrastructure.Jobs.Internal;
 using MuseSpace.Infrastructure.Persistence;
 
 namespace MuseSpace.Infrastructure.Jobs;
@@ -23,6 +24,7 @@ public sealed class ChapterDraftJob
 
     private readonly ISkillOrchestrator _orchestrator;
     private readonly IChapterRepository _chapterRepo;
+    private readonly IStoryOutlineRepository _outlineRepo;
     private readonly IAgentProgressNotifier _progressNotifier;
     private readonly ITaskProgressService _taskProgress;
     private readonly IGenerationRecordRepository _generationRepo;
@@ -33,6 +35,7 @@ public sealed class ChapterDraftJob
     public ChapterDraftJob(
         ISkillOrchestrator orchestrator,
         IChapterRepository chapterRepo,
+        IStoryOutlineRepository outlineRepo,
         IAgentProgressNotifier progressNotifier,
         ITaskProgressService taskProgress,
         IGenerationRecordRepository generationRepo,
@@ -42,6 +45,7 @@ public sealed class ChapterDraftJob
     {
         _orchestrator = orchestrator;
         _chapterRepo = chapterRepo;
+        _outlineRepo = outlineRepo;
         _progressNotifier = progressNotifier;
         _taskProgress = taskProgress;
         _generationRepo = generationRepo;
@@ -89,35 +93,24 @@ public sealed class ChapterDraftJob
                     string.Join("\n", chapter.MustIncludePoints.Select(p => $"- {p}")));
 
             var sceneGoal = string.Join("\n", sceneGoalParts);
-
-            var request = new SkillRequest
+            var outline = await _outlineRepo.GetByIdAsync(projectId, chapter.StoryOutlineId)
+                ?? await _outlineRepo.GetOrCreateDefaultAsync(projectId);
+            if (chapter.StoryOutlineId == Guid.Empty || chapter.StoryOutlineId != outline.Id)
             {
-                TaskType = "scene-draft",
-                StoryProjectId = projectId,
-                Parameters = new Dictionary<string, string>
-                {
-                    ["SceneGoal"] = sceneGoal,
-                    ["Conflict"] = chapter.Conflict ?? string.Empty,
-                    ["EmotionCurve"] = chapter.EmotionCurve ?? string.Empty,
-                    ["ChapterId"] = chapterId.ToString(),
-                    ["ReferenceText"] = options?.ReferenceText?.Trim() ?? string.Empty,
-                    ["ReferenceFocus"] = options?.ReferenceFocus?.Trim() ?? string.Empty,
-                    ["ReferenceStrength"] = options?.ReferenceStrength?.Trim() ?? string.Empty,
-                    // Module E
-                    ["GenerationMode"] = options?.GenerationMode?.Trim() ?? string.Empty,
-                    ["SourceNovelId"] = options?.SourceNovelId?.ToString() ?? string.Empty,
-                    ["ContinuationStartChapterNumber"] = options?.ContinuationStartChapterNumber?.ToString() ?? string.Empty,
-                    ["OriginalRangeStart"] = options?.OriginalRangeStart?.ToString() ?? string.Empty,
-                    ["OriginalRangeEnd"] = options?.OriginalRangeEnd?.ToString() ?? string.Empty,
-                    ["BranchTopic"] = options?.BranchTopic?.Trim() ?? string.Empty,
-                    ["DivergencePolicy"] = options?.DivergencePolicy?.Trim() ?? string.Empty,
-                },
-            };
+                chapter.StoryOutlineId = outline.Id;
+                await _chapterRepo.SaveAsync(projectId, chapter);
+            }
+
+            var outlineChapters = await _chapterRepo.GetByOutlineAsync(projectId, outline.Id);
+            var scope = ChapterDraftScopeBuilder.Build(projectId, chapter, outline, outlineChapters, options);
+            var includeNovelContext = ShouldIncludeNovelContext(scope, options);
 
             await _progressNotifier.NotifyGeneratingAsync(projectId, TaskType);
             await _taskProgress.ReportProgressAsync(bgTaskId, 30, "正在调用 AI 生成...");
 
-            var result = await _orchestrator.ExecuteAsync(request);
+            var result = await GenerateDraftAsync(
+                projectId, chapterId, chapter, scope, sceneGoal, scope.BoundaryInstruction,
+                includeNovelContext, options);
 
             if (!result.Success)
             {
@@ -125,6 +118,38 @@ public sealed class ChapterDraftJob
                     result.ErrorMessage ?? "草稿生成失败");
                 await _taskProgress.FailAsync(bgTaskId, result.ErrorMessage ?? "草稿生成失败");
                 return;
+            }
+
+            var verification = DraftVerifier.Verify(scope, result.Output);
+            if (!verification.IsPassed)
+            {
+                _logger.LogWarning(
+                    "[ChapterDraft] Verification failed chapter={ChapterId}: {Reason}",
+                    chapterId, verification.RevisionInstruction);
+                await _taskProgress.ReportProgressAsync(bgTaskId, 65, "草稿越过章节计划，正在自动重试...");
+
+                result = await GenerateDraftAsync(
+                    projectId, chapterId, chapter, scope, sceneGoal,
+                    scope.BoundaryInstruction + "\n\n自动重试原因：\n" + verification.RevisionInstructionForPrompt,
+                    includeNovelContext, options);
+
+                if (!result.Success)
+                {
+                    await _progressNotifier.NotifyFailedAsync(projectId, TaskType,
+                        result.ErrorMessage ?? "草稿重试失败");
+                    await _taskProgress.FailAsync(bgTaskId, result.ErrorMessage ?? "草稿重试失败");
+                    return;
+                }
+
+                verification = DraftVerifier.Verify(scope, result.Output);
+                if (!verification.IsPassed)
+                {
+                    await _progressNotifier.NotifyFailedAsync(projectId, TaskType,
+                        SummarizeVerificationFailure(verification));
+                    await _taskProgress.FailAsync(bgTaskId,
+                        SummarizeVerificationFailure(verification));
+                    return;
+                }
             }
 
             chapter.DraftText = result.Output;
@@ -144,7 +169,9 @@ public sealed class ChapterDraftJob
                 DurationMs = result.DurationMs,
                 Success = result.Success,
                 ErrorMessage = result.ErrorMessage,
-                InputPreview = sceneGoal.Length > 200 ? sceneGoal[..200] + "..." : sceneGoal,
+                InputPreview = !string.IsNullOrEmpty(result.RenderedPrompt)
+                    ? BuildInputPreview(scope, result.RenderedPrompt!)
+                    : (sceneGoal.Length > 200 ? sceneGoal[..200] + "..." : sceneGoal),
                 OutputPreview = result.Output.Length > 500 ? result.Output[..500] + "..." : result.Output,
                 InputTokens = result.InputTokens,
                 OutputTokens = result.OutputTokens,
@@ -175,6 +202,83 @@ public sealed class ChapterDraftJob
             await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "草稿生成发生意外错误");
             await _taskProgress.FailAsync(bgTaskId, "草稿生成发生意外错误");
         }
+    }
+
+    private Task<SkillResult> GenerateDraftAsync(
+        Guid projectId,
+        Guid chapterId,
+        Chapter chapter,
+        ChapterDraftScope scope,
+        string sceneGoal,
+        string boundaryInstruction,
+        bool includeNovelContext,
+        GenerateChapterDraftRequest? options)
+    {
+        var conflictParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(chapter.Conflict))
+            conflictParts.Add(chapter.Conflict!);
+        if (!string.IsNullOrWhiteSpace(boundaryInstruction))
+            conflictParts.Add("章节边界约束：\n" + boundaryInstruction);
+
+        var request = new SkillRequest
+        {
+            TaskType = "scene-draft",
+            StoryProjectId = projectId,
+            Parameters = new Dictionary<string, string>
+            {
+                ["SceneGoal"] = sceneGoal,
+                ["Conflict"] = string.Join("\n\n", conflictParts),
+                ["EmotionCurve"] = chapter.EmotionCurve ?? string.Empty,
+                ["ChapterId"] = chapterId.ToString(),
+                ["OutlineId"] = scope.OutlineId.ToString(),
+                ["InvolvedCharacterIds"] = chapter.KeyCharacterIds is { Count: > 0 }
+                    ? string.Join(',', chapter.KeyCharacterIds)
+                    : string.Empty,
+                ["IncludeNovelContext"] = includeNovelContext.ToString(),
+                ["ReferenceText"] = options?.ReferenceText?.Trim() ?? string.Empty,
+                ["ReferenceFocus"] = options?.ReferenceFocus?.Trim() ?? string.Empty,
+                ["ReferenceStrength"] = options?.ReferenceStrength?.Trim() ?? string.Empty,
+                // Module E
+                ["GenerationMode"] = scope.GenerationMode.ToString(),
+                ["SourceNovelId"] = scope.SourceNovelId?.ToString() ?? string.Empty,
+                ["ContinuationStartChapterNumber"] = options?.ContinuationStartChapterNumber?.ToString() ?? string.Empty,
+                ["OriginalRangeStart"] = scope.SourceRangeStart?.ToString() ?? string.Empty,
+                ["OriginalRangeEnd"] = scope.SourceRangeEnd?.ToString() ?? string.Empty,
+                ["BranchTopic"] = scope.BranchTopic?.Trim() ?? string.Empty,
+                ["DivergencePolicy"] = scope.DivergencePolicy.ToString(),
+            },
+        };
+
+        return _orchestrator.ExecuteAsync(request);
+    }
+
+    private static bool ShouldIncludeNovelContext(
+        ChapterDraftScope scope,
+        GenerateChapterDraftRequest? options)
+        => scope.GenerationMode != GenerationMode.Original || (options?.IncludeNovelContext ?? false);
+
+    private static string SummarizeVerificationFailure(DraftVerificationResult verification)
+    {
+        var blockers = verification.Violations
+            .Where(v => v.Severity == DraftViolationSeverity.Blocker)
+            .Take(3)
+            .Select(v => $"{v.Type}: {v.Evidence}")
+            .ToList();
+        return blockers.Count > 0
+            ? "草稿未通过章节边界验收：" + string.Join("；", blockers)
+            : "草稿未通过章节边界验收";
+    }
+
+    private static string BuildInputPreview(ChapterDraftScope scope, string renderedPrompt)
+    {
+        var prefix =
+            "===== CHAPTER DRAFT SCOPE =====\n" +
+            scope.ToLogSummary() +
+            "\n\n===== RENDERED PROMPT =====\n";
+        var budget = Math.Max(0, 8000 - prefix.Length);
+        return prefix + (renderedPrompt.Length > budget
+            ? renderedPrompt[..budget] + "\n...[truncated]"
+            : renderedPrompt);
     }
 
     private async Task ApplyUserLlmPreferenceAsync(Guid? userId)

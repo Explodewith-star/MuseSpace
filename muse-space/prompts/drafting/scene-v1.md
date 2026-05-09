@@ -11,6 +11,9 @@ Rules:
 - Follow the specified style requirements
 - Write in the narrative perspective provided
 - Do not contradict established facts from previous chapters
+- Write ONLY the current chapter described in Scene Goal. Do not write previous chapters, later chapters, recaps, previews, or plot beats from other chapter outlines.
+- The Conflict section may include chapter boundary constraints and future reserved beats. These constraints are mandatory, not inspiration.
+- Treat any original-novel/reference material as background only. Never copy, paraphrase, rewrite, continue, or transplant its concrete scenes, sentences, or plot sequence unless the current Scene Goal explicitly asks for that exact event.
 
 ## instruction
 
@@ -18,6 +21,9 @@ Write a scene draft based on the following information.
 
 **Project Summary:**
 {{project_summary}}
+
+**Current Outline:**
+{{outline_summary}}
 
 **Recent Chapter Summaries:**
 {{recent_summaries}}
@@ -84,6 +90,10 @@ Reference strength: {{reference_strength}}
 ## context
 
 Use the above information as your creative context. Focus on the scene goal and ensure the conflict is reflected in the narrative. The emotion curve should guide the pacing.
+
+The Scene Goal is the source of truth for what happens in this output. Recent summaries, timelines, immutable facts, and original references are constraints only; they must not override the current chapter's number, title, goal, summary, conflict, or must-hit points.
+
+If a future event, location, monster/ghost entity, death, fight, pursuit, rule explanation, or dimensional transition is not explicitly required by the current Scene Goal or must-hit points, keep it out of this chapter. You may foreshadow it only through ambiguous sensory details.
 
 The current chapter reference, if provided, is soft guidance for this chapter only. Use it only to understand the selected dimension such as emotion, dialogue, rhythm, style texture, scene structure, or interaction tension. Do not copy, paraphrase, rewrite, transplant, or imitate its concrete sentences, unique expressions, plot beats, or distinctive structure. If it conflicts with established project facts, chapter goals, character cards, or world rules, ignore the reference and follow the project facts.
 

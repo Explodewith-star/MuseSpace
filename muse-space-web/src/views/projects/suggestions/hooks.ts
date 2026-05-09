@@ -12,11 +12,13 @@ import {
   triggerCharacterConsistencyCheck,
   importOutline,
 } from '@/api/suggestions'
+import { getStoryOutlines } from '@/api/outlines'
 import { useToast } from '@/composables/useToast'
 import type {
   AgentSuggestionResponse,
   SuggestionStatus,
   OutlineChapterItem,
+  StoryOutlineResponse,
 } from '@/types/models'
 import { parseOutlineChapters } from './utils'
 
@@ -382,11 +384,20 @@ export function initSuggestionsState() {
   const outlineImportChapters = ref<OutlineChapterItem[]>([])
   const outlineImportLoading = ref(false)
   const outlineImportSuggestionId = ref<string>('')
+  const outlineImportTargetId = ref<string>('')
+  const outlines = ref<StoryOutlineResponse[]>([])
 
   function openOutlineImport(s: AgentSuggestionResponse): void {
     const items = parseOutlineChapters(s.contentJson)
     outlineImportChapters.value = items.map((ch) => ({ ...ch }))
     outlineImportSuggestionId.value = s.id
+    outlineImportTargetId.value = s.targetEntityId ?? ''
+    void getStoryOutlines(projectId).then((res) => {
+      outlines.value = res
+      if (!outlineImportTargetId.value) {
+        outlineImportTargetId.value = res.find((o) => o.isDefault)?.id ?? res[0]?.id ?? ''
+      }
+    })
     outlineImportOpen.value = true
   }
 
@@ -399,6 +410,7 @@ export function initSuggestionsState() {
     outlineImportLoading.value = true
     try {
       const count = await importOutline(projectId, {
+        storyOutlineId: outlineImportTargetId.value || undefined,
         chapters: outlineImportChapters.value.map((ch) => ({
           number: ch.number,
           title: ch.title,
@@ -464,6 +476,8 @@ export function initSuggestionsState() {
     outlineImportOpen,
     outlineImportChapters,
     outlineImportLoading,
+    outlineImportTargetId,
+    outlines,
     openOutlineImport,
     removeOutlineChapter,
     submitOutlineImport,

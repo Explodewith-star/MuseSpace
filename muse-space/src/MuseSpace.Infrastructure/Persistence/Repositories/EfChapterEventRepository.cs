@@ -15,6 +15,15 @@ public sealed class EfChapterEventRepository : IChapterEventRepository
             .OrderBy(e => e.ChapterId).ThenBy(e => e.Order)
             .ToListAsync(ct);
 
+    public Task<List<ChapterEvent>> GetByOutlineAsync(
+        Guid projectId,
+        Guid storyOutlineId,
+        CancellationToken ct = default)
+        => _db.ChapterEvents.AsNoTracking()
+            .Where(e => e.StoryProjectId == projectId && e.StoryOutlineId == storyOutlineId)
+            .OrderBy(e => e.ChapterId).ThenBy(e => e.Order)
+            .ToListAsync(ct);
+
     public Task<List<ChapterEvent>> GetByChapterAsync(Guid projectId, Guid chapterId, CancellationToken ct = default)
         => _db.ChapterEvents.AsNoTracking()
             .Where(e => e.StoryProjectId == projectId && e.ChapterId == chapterId)
@@ -43,11 +52,29 @@ public sealed class EfChapterEventRepository : IChapterEventRepository
             .OrderBy(e => e.ChapterId).ThenBy(e => e.Order)
             .ToListAsync(ct);
 
+    public Task<List<ChapterEvent>> GetIrreversibleByOutlineAsync(
+        Guid projectId,
+        Guid storyOutlineId,
+        CancellationToken ct = default)
+        => _db.ChapterEvents.AsNoTracking()
+            .Where(e => e.StoryProjectId == projectId
+                && e.StoryOutlineId == storyOutlineId
+                && e.IsIrreversible)
+            .OrderBy(e => e.ChapterId).ThenBy(e => e.Order)
+            .ToListAsync(ct);
+
     public Task<ChapterEvent?> GetByIdAsync(Guid projectId, Guid id, CancellationToken ct = default)
         => _db.ChapterEvents.FirstOrDefaultAsync(e => e.StoryProjectId == projectId && e.Id == id, ct);
 
     public async Task<ChapterEvent> AddAsync(ChapterEvent ev, CancellationToken ct = default)
     {
+        if (ev.StoryOutlineId == Guid.Empty)
+        {
+            ev.StoryOutlineId = await _db.Chapters.AsNoTracking()
+                .Where(c => c.StoryProjectId == ev.StoryProjectId && c.Id == ev.ChapterId)
+                .Select(c => c.StoryOutlineId)
+                .FirstAsync(ct);
+        }
         ev.CreatedAt = ev.UpdatedAt = DateTime.UtcNow;
         _db.ChapterEvents.Add(ev);
         await _db.SaveChangesAsync(ct);
@@ -56,6 +83,13 @@ public sealed class EfChapterEventRepository : IChapterEventRepository
 
     public async Task UpdateAsync(ChapterEvent ev, CancellationToken ct = default)
     {
+        if (ev.StoryOutlineId == Guid.Empty)
+        {
+            ev.StoryOutlineId = await _db.Chapters.AsNoTracking()
+                .Where(c => c.StoryProjectId == ev.StoryProjectId && c.Id == ev.ChapterId)
+                .Select(c => c.StoryOutlineId)
+                .FirstAsync(ct);
+        }
         ev.UpdatedAt = DateTime.UtcNow;
         _db.ChapterEvents.Update(ev);
         await _db.SaveChangesAsync(ct);
@@ -83,6 +117,13 @@ public sealed class EfChapterEventRepository : IChapterEventRepository
             ev.Id = ev.Id == Guid.Empty ? Guid.NewGuid() : ev.Id;
             ev.StoryProjectId = projectId;
             ev.ChapterId = chapterId;
+            if (ev.StoryOutlineId == Guid.Empty)
+            {
+                ev.StoryOutlineId = await _db.Chapters.AsNoTracking()
+                    .Where(c => c.StoryProjectId == projectId && c.Id == chapterId)
+                    .Select(c => c.StoryOutlineId)
+                    .FirstAsync(ct);
+            }
             ev.CreatedAt = ev.UpdatedAt = now;
             _db.ChapterEvents.Add(ev);
         }

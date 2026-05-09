@@ -4,12 +4,14 @@ public class StoryContextRequest
 {
     public Guid StoryProjectId { get; init; }
     public Guid? ChapterId { get; init; }
+    public Guid? OutlineId { get; init; }
     public Guid? SceneId { get; init; }
     public List<Guid>? InvolvedCharacterIds { get; init; }
     public Guid? StyleProfileId { get; init; }
     public string SceneGoal { get; init; } = string.Empty;
     public string? Conflict { get; init; }
     public string? EmotionCurve { get; init; }
+    public bool IncludeNovelContext { get; init; }
 
     // ── Module E：续写/外传模式 ─────────────────────────────────────
     public Domain.Enums.GenerationMode GenerationMode { get; init; } = Domain.Enums.GenerationMode.Original;

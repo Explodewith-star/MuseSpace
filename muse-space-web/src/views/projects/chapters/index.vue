@@ -13,6 +13,7 @@ import AppModal from '@/components/base/AppModal.vue'
 import { initChaptersState } from './hooks'
 import { triggerOutlinePlan } from '@/api/suggestions'
 import { getSuggestions } from '@/api/suggestions'
+import { createStoryOutline, getStoryOutlines } from '@/api/outlines'
 import { getCharacters } from '@/api/characters'
 import { getWorldRules } from '@/api/worldRules'
 import { exportProjectChapters, type ExportFormat } from '@/api/export'
@@ -27,11 +28,86 @@ import {
 } from '@/api/chapters'
 import { useAgentProgress } from '@/composables/useAgentProgress'
 import { useToast } from '@/composables/useToast'
+import type { GenerationMode, StoryOutlineResponse } from '@/types/models'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
 const projectId = route.params.id as string
+
+const outlines = ref<StoryOutlineResponse[]>([])
+const outlinesLoading = ref(false)
+const selectedOutlineId = ref('')
+const selectedOutline = computed(() =>
+  outlines.value.find((o) => o.id === selectedOutlineId.value) ?? null,
+)
+const selectedOutlineChapters = computed(() => chapters.value)
+
+const MODE_LABELS: Record<GenerationMode, string> = {
+  Original: '原创主线',
+  ContinueFromOriginal: '原著续写',
+  SideStoryFromOriginal: '支线番外',
+  ExpandOrRewrite: '扩写/改写',
+}
+
+async function loadOutlines() {
+  outlinesLoading.value = true
+  try {
+    outlines.value = await getStoryOutlines(projectId)
+    if (!selectedOutlineId.value || !outlines.value.some((o) => o.id === selectedOutlineId.value)) {
+      selectedOutlineId.value = outlines.value.find((o) => o.isDefault)?.id ?? outlines.value[0]?.id ?? ''
+    }
+  } catch {
+    // handled
+  } finally {
+    outlinesLoading.value = false
+  }
+}
+
+function selectOutline(id: string) {
+  if (selectedOutlineId.value === id) return
+  selectedOutlineId.value = id
+}
+
+const outlineModalOpen = ref(false)
+const outlineSaving = ref(false)
+const outlineForm = reactive({
+  name: '',
+  mode: 'Original' as GenerationMode,
+  outlineSummary: '',
+  branchTopic: '',
+})
+
+function openOutlineModal(mode: GenerationMode = 'Original') {
+  Object.assign(outlineForm, {
+    name: '',
+    mode,
+    outlineSummary: '',
+    branchTopic: '',
+  })
+  outlineModalOpen.value = true
+}
+
+async function submitOutline() {
+  if (!outlineForm.name.trim()) return
+  outlineSaving.value = true
+  try {
+    const outline = await createStoryOutline(projectId, {
+      name: outlineForm.name.trim(),
+      mode: outlineForm.mode,
+      outlineSummary: outlineForm.outlineSummary.trim() || undefined,
+      branchTopic: outlineForm.branchTopic.trim() || undefined,
+    })
+    outlines.value.push(outline)
+    selectedOutlineId.value = outline.id
+    outlineModalOpen.value = false
+    toast.success('大纲已创建')
+  } catch {
+    // handled
+  } finally {
+    outlineSaving.value = false
+  }
+}
 
 const {
   chapters,
@@ -49,7 +125,13 @@ const {
   confirmDelete,
   reorderAll,
   reorderLoading,
-} = initChaptersState()
+} = initChaptersState({ getSelectedOutlineId: () => selectedOutlineId.value || undefined })
+
+watch(selectedOutlineId, async (id) => {
+  if (!id) return
+  await loadChapters()
+  await refreshPendingOutline()
+}, { flush: 'post' })
 
 const STATUS_VARIANTS: Record<number, string> = {
   0: 'muted',
@@ -90,7 +172,9 @@ function openPlanModal() {
   // 根据当前章节数自动选模式
   planForm.mode = chapters.value.length > 0 ? 'continue' : 'new'
   planForm.goal = ''
-  planForm.chapterCount = '10'
+  planForm.chapterCount = selectedOutline.value?.targetChapterCount
+    ? String(selectedOutline.value.targetChapterCount)
+    : '10'
   loadContextStats()
   planModalOpen.value = true
 }
@@ -100,6 +184,7 @@ async function submitPlan() {
   planLoading.value = true
   try {
     await triggerOutlinePlan(projectId, {
+      storyOutlineId: selectedOutlineId.value || undefined,
       goal: planForm.goal,
       chapterCount: Number(planForm.chapterCount),
       mode: planForm.mode,
@@ -143,6 +228,7 @@ async function submitExport() {
   exportLoading.value = true
   try {
     await exportProjectChapters(projectId, {
+      storyOutlineId: selectedOutlineId.value || undefined,
       format: exportForm.format,
       from: exportForm.rangeMode === 'custom' ? exportForm.fromNumber : undefined,
       to: exportForm.rangeMode === 'custom' ? exportForm.toNumber : undefined,
@@ -210,13 +296,13 @@ const BATCH_STATUS_LABELS: Record<ChapterBatchDraftRunResponse['status'], string
 }
 
 function openBatchModal() {
-  if (chapters.value.length === 0) return
-  const first = chapters.value[0].number
-  const planned = chapters.value.find((c) => c.status === 0)
+  if (selectedOutlineChapters.value.length === 0) return
+  const first = selectedOutlineChapters.value[0].number
+  const planned = selectedOutlineChapters.value.find((c) => c.status === 0)
   const start = planned ? planned.number : first
   batchForm.fromNumber = start
   batchForm.toNumber = Math.min(
-    chapters.value[chapters.value.length - 1].number,
+    selectedOutlineChapters.value[selectedOutlineChapters.value.length - 1].number,
     start + DEFAULT_BATCH_DRAFT_SIZE - 1,
   )
   batchForm.skipChaptersWithDraft = false
@@ -268,6 +354,7 @@ async function submitBatch() {
   batchSubmitLoading.value = true
   try {
     const run = await batchGenerateDrafts(projectId, {
+      storyOutlineId: selectedOutlineId.value || undefined,
       fromNumber: batchForm.fromNumber,
       toNumber: batchForm.toNumber,
       skipChaptersWithDraft: batchForm.skipChaptersWithDraft,
@@ -313,7 +400,11 @@ const pendingOutlineCount = ref(0)
 
 async function refreshPendingOutline() {
   try {
-    const list = await getSuggestions(projectId, { category: 'Outline', status: 'Pending' })
+    const list = await getSuggestions(projectId, {
+      category: 'Outline',
+      status: 'Pending',
+      targetEntityId: selectedOutlineId.value || undefined,
+    })
     pendingOutlineCount.value = list.length
   } catch {
     // ignore
@@ -322,10 +413,12 @@ async function refreshPendingOutline() {
 
 onMounted(async () => {
   joinProject(projectId)
+  await loadOutlines()
+  await loadChapters()
   refreshPendingOutline()
   // 恢复可能在进行中的批量任务（防止刷新后丢失轮询）
   try {
-    const runs = await listChapterBatchRuns(projectId, 1)
+    const runs = await listChapterBatchRuns(projectId, 1, selectedOutlineId.value || undefined)
     const active = runs[0]
     if (active && (active.status === 'Pending' || active.status === 'Running')) {
       activeBatchRun.value = active
@@ -395,6 +488,36 @@ watch(outlineStage, (e) => {
           添加章节
         </AppButton>
       </div>
+    </div>
+
+    <div class="outline-switcher">
+      <div class="outline-tabs" v-if="outlines.length">
+        <button
+          v-for="outline in outlines"
+          :key="outline.id"
+          type="button"
+          :class="['outline-tab', { active: outline.id === selectedOutlineId }]"
+          @click="selectOutline(outline.id)"
+        >
+          <span class="outline-tab__name">{{ outline.name }}</span>
+          <span class="outline-tab__meta">
+            {{ MODE_LABELS[outline.mode] }} · {{ outline.chapterCount }} 章
+          </span>
+        </button>
+      </div>
+      <div v-else-if="outlinesLoading" class="outline-loading">正在加载大纲...</div>
+      <AppButton variant="ghost" size="sm" @click="openOutlineModal()">
+        <i class="i-lucide-folder-plus" />
+        新建大纲
+      </AppButton>
+    </div>
+
+    <div v-if="selectedOutline" class="outline-current">
+      <i class="i-lucide-git-branch" />
+      <span>{{ selectedOutline.name }}</span>
+      <strong>{{ MODE_LABELS[selectedOutline.mode] }}</strong>
+      <span v-if="selectedOutline.outlineSummary">{{ selectedOutline.outlineSummary }}</span>
+      <span v-else-if="selectedOutline.branchTopic">{{ selectedOutline.branchTopic }}</span>
     </div>
 
     <!-- Agent 进度条 -->
@@ -566,39 +689,18 @@ watch(outlineStage, (e) => {
     <!-- AI 大纲规划弹窗 -->
     <AppModal v-model="planModalOpen" title="AI 规划大纲" width="560px">
       <div class="plan-form">
-        <!-- 模式选择 -->
-        <div class="plan-mode-row">
-          <button
-            :class="['plan-mode-btn', { active: planForm.mode === 'new' }]"
-            @click="planForm.mode = 'new'"
-          >
-            <i class="i-lucide-file-plus" />
-            全新规划
-          </button>
-          <button
-            :class="['plan-mode-btn', { active: planForm.mode === 'continue' }]"
-            :disabled="!chapters.length"
-            @click="planForm.mode = 'continue'"
-          >
-            <i class="i-lucide-arrow-right-from-line" />
-            续写扩展
-          </button>
-          <button
-            :class="['plan-mode-btn', { active: planForm.mode === 'extra' }]"
-            :disabled="!chapters.length"
-            @click="planForm.mode = 'extra'"
-          >
-            <i class="i-lucide-sparkles" />
-            番外/支线
-          </button>
+        <div v-if="selectedOutline" class="plan-outline-card">
+          <div>
+            <span class="plan-outline-label">目标大纲</span>
+            <strong>{{ selectedOutline.name }}</strong>
+          </div>
+          <AppBadge size="sm" variant="default">
+            {{ MODE_LABELS[selectedOutline.mode] }}
+          </AppBadge>
         </div>
 
-        <p v-if="planForm.mode === 'continue' && chapters.length" class="plan-hint">
-          将基于已有 <strong>{{ chapters.length }}</strong> 章内容续写，新章节从第
-          {{ chapters.length + 1 }} 章开始。
-        </p>
-        <p v-else-if="planForm.mode === 'extra' && chapters.length" class="plan-hint">
-          将生成番外/支线卷，不影响主线，章号从第 {{ chapters.length + 1 }} 章开始。
+        <p v-if="chapters.length" class="plan-hint">
+          当前大纲已有 <strong>{{ chapters.length }}</strong> 章，新规划会按该大纲继续编号。
         </p>
 
         <!-- 上下文提示 -->
@@ -799,6 +901,41 @@ watch(outlineStage, (e) => {
         </AppButton>
       </template>
     </AppModal>
+
+    <AppModal v-model="outlineModalOpen" title="新建故事大纲" width="540px">
+      <div class="outline-form">
+        <div class="outline-mode-grid">
+          <button
+            v-for="mode in (['Original', 'ContinueFromOriginal', 'SideStoryFromOriginal', 'ExpandOrRewrite'] as GenerationMode[])"
+            :key="mode"
+            type="button"
+            :class="['outline-mode-option', { active: outlineForm.mode === mode }]"
+            @click="outlineForm.mode = mode"
+          >
+            {{ MODE_LABELS[mode] }}
+          </button>
+        </div>
+        <AppInput v-model="outlineForm.name" label="大纲名称 *" placeholder="如：原创主线 / 番外：旧城雨夜" />
+        <AppTextarea
+          v-model="outlineForm.outlineSummary"
+          label="大纲说明"
+          placeholder="这条故事线的核心方向、阶段目标或边界..."
+          :rows="3"
+        />
+        <AppInput
+          v-if="outlineForm.mode === 'SideStoryFromOriginal'"
+          v-model="outlineForm.branchTopic"
+          label="番外主题"
+          placeholder="如：围绕配角少年时期展开十章支线"
+        />
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="outlineModalOpen = false">取消</AppButton>
+        <AppButton :loading="outlineSaving" :disabled="!outlineForm.name.trim()" @click="submitOutline">
+          创建
+        </AppButton>
+      </template>
+    </AppModal>
   </div>
 </template>
 
@@ -820,6 +957,74 @@ watch(outlineStage, (e) => {
 .header-actions {
   display: flex;
   gap: 8px;
+}
+
+.outline-switcher {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.outline-tabs {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.outline-tab {
+  min-width: 150px;
+  max-width: 220px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.outline-tab.active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  color: var(--color-primary);
+}
+
+.outline-tab__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline-tab__meta,
+.outline-loading {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.outline-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+  font-size: 13px;
+}
+
+.outline-current strong {
+  color: var(--color-primary);
 }
 
 .empty-actions {
@@ -1052,6 +1257,56 @@ watch(outlineStage, (e) => {
 
 .plan-count-tip strong {
   color: var(--color-text-secondary);
+}
+
+.plan-outline-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-elevated);
+}
+
+.plan-outline-card > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.plan-outline-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.outline-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.outline-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.outline-mode-option {
+  height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.outline-mode-option.active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .context-info {

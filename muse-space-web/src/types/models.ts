@@ -21,11 +21,13 @@ export interface CreateStoryProjectRequest {
 export interface ChapterResponse {
   id: string
   storyProjectId: string
+  storyOutlineId: string
   number: number
   title?: string
   summary?: string
   goal?: string
   status: number
+  allowedRevealLevel?: number
   draftText?: string
   finalText?: string
   conflict?: string
@@ -37,6 +39,7 @@ export interface ChapterResponse {
 
 export interface CreateChapterRequest {
   number: number
+  storyOutlineId?: string
   title?: string
   summary?: string
   goal?: string
@@ -44,6 +47,7 @@ export interface CreateChapterRequest {
   emotionCurve?: string
   keyCharacterIds?: string[]
   mustIncludePoints?: string[]
+  allowedRevealLevel?: number
 }
 
 export interface UpdateChapterRequest {
@@ -53,6 +57,7 @@ export interface UpdateChapterRequest {
   draftText?: string
   finalText?: string
   status?: number
+  allowedRevealLevel?: number
   conflict?: string
   emotionCurve?: string
   keyCharacterIds?: string[]
@@ -241,6 +246,7 @@ export interface AgentSuggestionResponse {
   contentJson: string
   status: SuggestionStatus
   targetEntityId?: string
+  sourceNovelId?: string
   createdAt: string
   resolvedAt?: string
 }
@@ -275,6 +281,7 @@ export interface BatchResolveSuggestionsRequest {
 
 // ---------- Outline Plan ----------
 export interface OutlinePlanRequest {
+  storyOutlineId?: string
   goal: string
   chapterCount: number
   mode: 'new' | 'continue' | 'extra'
@@ -307,6 +314,7 @@ export interface RegenerateOutlineVolumeRequest {
 }
 
 export interface ImportOutlineRequest {
+  storyOutlineId?: string
   chapters: ImportOutlineChapter[]
 }
 
@@ -315,4 +323,58 @@ export interface ImportOutlineChapter {
   title: string
   goal?: string
   summary?: string
+}
+
+// ---------- StoryOutline ----------
+export type GenerationMode =
+  | 'Original'
+  | 'ContinueFromOriginal'
+  | 'SideStoryFromOriginal'
+  | 'ExpandOrRewrite'
+
+export type DivergencePolicy = 'StrictCanon' | 'SoftCanon' | 'AlternateTimeline'
+
+export interface StoryOutlineResponse {
+  id: string
+  storyProjectId: string
+  name: string
+  mode: GenerationMode
+  sourceNovelId?: string | null
+  sourceRangeStart?: number | null
+  sourceRangeEnd?: number | null
+  branchTopic?: string | null
+  continuationAnchor?: string | null
+  divergencePolicy: DivergencePolicy
+  targetChapterCount?: number | null
+  outlineSummary?: string | null
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+  chapterCount: number
+}
+
+export interface CreateStoryOutlineRequest {
+  name: string
+  mode: GenerationMode
+  sourceNovelId?: string
+  sourceRangeStart?: number
+  sourceRangeEnd?: number
+  branchTopic?: string
+  continuationAnchor?: string
+  divergencePolicy?: DivergencePolicy
+  targetChapterCount?: number
+  outlineSummary?: string
+}
+
+export interface UpdateStoryOutlineRequest {
+  name?: string
+  mode?: GenerationMode
+  sourceNovelId?: string
+  sourceRangeStart?: number
+  sourceRangeEnd?: number
+  branchTopic?: string
+  continuationAnchor?: string
+  divergencePolicy?: DivergencePolicy
+  targetChapterCount?: number
+  outlineSummary?: string
 }

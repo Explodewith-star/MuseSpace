@@ -25,6 +25,7 @@ public sealed class ProjectExportController : ControllerBase
     ///   format=md|txt，默认 md
     ///   from=起始章号（含），可省
     ///   to=结束章号（含），可省
+    ///   storyOutlineId=目标大纲 ID，可省
     ///   onlyFinal=true|false，默认 true
     ///   includeDraft=true|false（仅 onlyFinal=false 时生效），默认 false
     /// </summary>
@@ -34,6 +35,7 @@ public sealed class ProjectExportController : ControllerBase
         [FromQuery] string? format,
         [FromQuery(Name = "from")] int? fromNumber,
         [FromQuery(Name = "to")] int? toNumber,
+        [FromQuery] Guid? storyOutlineId,
         [FromQuery] bool onlyFinal = true,
         [FromQuery(Name = "includeDraft")] bool includeDraft = false,
         CancellationToken cancellationToken = default)
@@ -52,6 +54,7 @@ public sealed class ProjectExportController : ControllerBase
         var options = new ChapterExportOptions
         {
             Format = fmt.Value,
+            StoryOutlineId = storyOutlineId,
             FromNumber = fromNumber,
             ToNumber = toNumber,
             OnlyFinal = onlyFinal,

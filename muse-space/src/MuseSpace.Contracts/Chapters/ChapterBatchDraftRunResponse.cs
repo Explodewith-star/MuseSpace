@@ -5,6 +5,7 @@ public sealed class ChapterBatchDraftRunResponse
 {
     public Guid Id { get; set; }
     public Guid StoryProjectId { get; set; }
+    public Guid StoryOutlineId { get; set; }
     public int FromNumber { get; set; }
     public int ToNumber { get; set; }
     public int TotalCount { get; set; }

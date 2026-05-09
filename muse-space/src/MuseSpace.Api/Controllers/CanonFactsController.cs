@@ -22,15 +22,22 @@ public class CanonFactsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<CanonFactResponse>>>> GetAll(
         Guid projectId,
+        [FromQuery] Guid? storyOutlineId,
         [FromQuery] bool onlyActive = false,
         [FromQuery] bool onlyLocked = false,
         CancellationToken ct = default)
     {
-        var list = onlyLocked
-            ? await _repo.GetLockedAsync(projectId, ct)
-            : onlyActive
-                ? await _repo.GetActiveAsync(projectId, ct)
-                : await _repo.GetByProjectAsync(projectId, ct);
+        var list = storyOutlineId.HasValue
+            ? onlyLocked
+                ? await _repo.GetLockedByOutlineAsync(projectId, storyOutlineId.Value, ct)
+                : onlyActive
+                    ? await _repo.GetActiveByOutlineAsync(projectId, storyOutlineId.Value, ct)
+                    : await _repo.GetByOutlineAsync(projectId, storyOutlineId.Value, ct)
+            : onlyLocked
+                ? await _repo.GetLockedAsync(projectId, ct)
+                : onlyActive
+                    ? await _repo.GetActiveAsync(projectId, ct)
+                    : await _repo.GetByProjectAsync(projectId, ct);
         return Ok(ApiResponse<List<CanonFactResponse>>.Ok(list.Select(ToResp).ToList()));
     }
 
@@ -51,6 +58,7 @@ public class CanonFactsController : ControllerBase
         var fact = new CanonFact
         {
             StoryProjectId = projectId,
+            StoryOutlineId = req.StoryOutlineId ?? Guid.Empty,
             FactType = req.FactType,
             SubjectId = req.SubjectId,
             ObjectId = req.ObjectId,
@@ -74,6 +82,8 @@ public class CanonFactsController : ControllerBase
         if (item is null) return NotFound(ApiResponse<CanonFactResponse>.Fail("事实不存在"));
 
         item.FactType = req.FactType;
+        if (req.StoryOutlineId.HasValue)
+            item.StoryOutlineId = req.StoryOutlineId.Value;
         item.SubjectId = req.SubjectId;
         item.ObjectId = req.ObjectId;
         item.FactKey = req.FactKey;
@@ -117,6 +127,7 @@ public class CanonFactsController : ControllerBase
     {
         Id = f.Id,
         StoryProjectId = f.StoryProjectId,
+        StoryOutlineId = f.StoryOutlineId,
         FactType = f.FactType,
         SubjectId = f.SubjectId,
         ObjectId = f.ObjectId,

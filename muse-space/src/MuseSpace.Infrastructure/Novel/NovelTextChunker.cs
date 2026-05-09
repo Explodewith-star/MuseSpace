@@ -50,6 +50,9 @@ public sealed class NovelTextChunker
                 });
             }
 
+            if (end >= content.Length)
+                break;
+
             // Advance with overlap to preserve cross-boundary context
             var nextPosition = Math.Max(end - OverlapSize, position + 1);
             position = AlignStartBoundary(content, nextPosition);

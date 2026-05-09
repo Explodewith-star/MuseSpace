@@ -9,6 +9,7 @@ import AppModal from '@/components/base/AppModal.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import { getChapters, deleteChapter, batchDeleteChapters } from '@/api/chapters'
+import { getStoryOutlines } from '@/api/outlines'
 import {
   getSuggestions,
   triggerOutlinePlan,
@@ -21,7 +22,7 @@ import { getWorldRules } from '@/api/worldRules'
 import { useToast } from '@/composables/useToast'
 import { useAgentProgress } from '@/composables/useAgentProgress'
 import { parseOutlineVolumes, parseOutlineChapters } from '../suggestions/utils'
-import type { ChapterResponse, AgentSuggestionResponse } from '@/types/models'
+import type { ChapterResponse, AgentSuggestionResponse, GenerationMode, StoryOutlineResponse } from '@/types/models'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,20 +35,43 @@ const chaptersLoading = ref(true)
 const suggestionsLoading = ref(true)
 const chapters = ref<ChapterResponse[]>([])
 const outlineSuggestions = ref<AgentSuggestionResponse[]>([])
+const storyOutlines = ref<StoryOutlineResponse[]>([])
+const selectedOutlineId = ref('')
+const selectedOutline = computed(() =>
+  storyOutlines.value.find((o) => o.id === selectedOutlineId.value) ?? null,
+)
+
+function outlineModeToPlanMode(mode?: GenerationMode): 'new' | 'continue' | 'extra' {
+  if (mode === 'SideStoryFromOriginal') return 'extra'
+  if (mode === 'ContinueFromOriginal' || mode === 'ExpandOrRewrite') return 'continue'
+  return chapters.value.length > 0 ? 'continue' : 'new'
+}
+
+async function loadStoryOutlines() {
+  storyOutlines.value = await getStoryOutlines(projectId)
+  if (!selectedOutlineId.value || !storyOutlines.value.some((o) => o.id === selectedOutlineId.value)) {
+    selectedOutlineId.value = storyOutlines.value.find((o) => o.isDefault)?.id ?? storyOutlines.value[0]?.id ?? ''
+  }
+}
 
 async function loadChapters() {
   chaptersLoading.value = true
-  try { chapters.value = await getChapters(projectId) } catch { /* */ }
+  try { chapters.value = await getChapters(projectId, selectedOutlineId.value || undefined) } catch { /* */ }
   finally { chaptersLoading.value = false }
 }
 
 async function loadSuggestions() {
   suggestionsLoading.value = true
-  try { outlineSuggestions.value = await getSuggestions(projectId, { category: 'Outline' }) } catch { /* */ }
+  try {
+    const list = await getSuggestions(projectId, { category: 'Outline' })
+    outlineSuggestions.value = list.filter((s) =>
+      !selectedOutlineId.value || !s.targetEntityId || s.targetEntityId === selectedOutlineId.value)
+  } catch { /* */ }
   finally { suggestionsLoading.value = false }
 }
 
 async function loadAll() {
+  await loadStoryOutlines()
   await Promise.all([loadChapters(), loadSuggestions()])
 }
 
@@ -109,7 +133,7 @@ async function loadContextStats() {
 }
 
 function openPlanModal() {
-  planForm.mode = chapters.value.length > 0 ? 'continue' : 'new'
+  planForm.mode = outlineModeToPlanMode(selectedOutline.value?.mode)
   planForm.goal = ''
   planForm.chapterCount = '10'
   loadContextStats()
@@ -120,7 +144,12 @@ async function submitPlan() {
   if (!planForm.goal.trim()) return
   planLoading.value = true
   try {
-    await triggerOutlinePlan(projectId, { goal: planForm.goal, chapterCount: Number(planForm.chapterCount), mode: planForm.mode })
+    await triggerOutlinePlan(projectId, {
+      storyOutlineId: selectedOutlineId.value || undefined,
+      goal: planForm.goal,
+      chapterCount: Number(planForm.chapterCount),
+      mode: planForm.mode,
+    })
     planModalOpen.value = false
     toast.success('大纲规划已提交，请稍候...')
   } catch { /* */ }
@@ -261,6 +290,10 @@ watch(outlineStage, (e) => {
   }
 })
 
+watch(selectedOutlineId, () => {
+  void Promise.all([loadChapters(), loadSuggestions()])
+})
+
 onMounted(() => {
   joinProject(projectId)
   void loadAll()
@@ -277,6 +310,11 @@ onUnmounted(() => stop())
         <AppBadge v-if="totalChapters > 0" variant="default">{{ totalChapters }} 章</AppBadge>
       </div>
       <div class="header-actions">
+        <select v-if="storyOutlines.length" v-model="selectedOutlineId" class="outline-select">
+          <option v-for="outline in storyOutlines" :key="outline.id" :value="outline.id">
+            {{ outline.name }}
+          </option>
+        </select>
         <AppButton variant="ghost" size="sm" @click="loadAll">
           <i class="i-lucide-refresh-cw" />
           刷新
@@ -314,7 +352,7 @@ onUnmounted(() => stop())
           <i class="i-lucide-file-text section-icon" />
           大纲草案
         </h3>
-        <span class="section-hint">由 AI 生成的大纲方案，审核后可一键导入为章节</span>
+        <span class="section-hint">当前选中「{{ selectedOutline?.name ?? '默认大纲' }}」</span>
       </div>
 
       <div v-if="suggestionsLoading" class="skeleton-grid">
@@ -372,7 +410,7 @@ onUnmounted(() => stop())
           <i class="i-lucide-book-text section-icon" />
           章节结构
         </h3>
-        <span class="section-hint">实际写入项目的章节（由大纲导入或手动添加）</span>
+        <span class="section-hint">实际写入「{{ selectedOutline?.name ?? '默认大纲' }}」的章节</span>
         <AppButton
           v-if="chapters.length > 0"
           variant="ghost"
@@ -591,6 +629,17 @@ onUnmounted(() => stop())
 .header-actions {
   display: flex;
   gap: 8px;
+}
+
+.outline-select {
+  height: 32px;
+  min-width: 170px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: 13px;
 }
 
 /* Agent bar */

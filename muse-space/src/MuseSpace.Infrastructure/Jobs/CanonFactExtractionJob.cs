@@ -84,7 +84,7 @@ public sealed class CanonFactExtractionJob
                 ? "（暂无角色）"
                 : string.Join("\n", characters.Select(c => $"- {c.Id} | {c.Name}"));
 
-            var existingFacts = await _factRepo.GetActiveAsync(projectId);
+            var existingFacts = await _factRepo.GetActiveByOutlineAsync(projectId, chapter.StoryOutlineId);
             var factsText = existingFacts.Count == 0
                 ? "（暂无）"
                 : string.Join("\n", existingFacts.Select(f =>
@@ -138,12 +138,14 @@ public sealed class CanonFactExtractionJob
                     string.IsNullOrWhiteSpace(f.FactValue))
                     continue;
 
-                var existing = await _factRepo.GetByKeyAsync(projectId, f.FactType!, f.FactKey!);
+                var existing = await _factRepo.GetByKeyAsync(
+                    projectId, chapter.StoryOutlineId, f.FactType!, f.FactKey!);
                 if (existing is null)
                 {
                     await _factRepo.AddAsync(new CanonFact
                     {
                         StoryProjectId = projectId,
+                        StoryOutlineId = chapter.StoryOutlineId,
                         FactType = f.FactType!,
                         SubjectId = LookupId(f.SubjectName, nameToId),
                         ObjectId = LookupId(f.ObjectName, nameToId),

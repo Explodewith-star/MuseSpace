@@ -8,15 +8,26 @@ namespace MuseSpace.Application.Services.Story;
 public sealed class ChapterAppService
 {
     private readonly IChapterRepository _repository;
+    private readonly IStoryOutlineRepository _outlineRepository;
 
-    public ChapterAppService(IChapterRepository repository)
-        => _repository = repository;
+    public ChapterAppService(IChapterRepository repository, IStoryOutlineRepository outlineRepository)
+    {
+        _repository = repository;
+        _outlineRepository = outlineRepository;
+    }
 
     public async Task<ChapterResponse> CreateAsync(Guid projectId, CreateChapterRequest request, CancellationToken cancellationToken = default)
     {
         var chapter = request.Adapt<Chapter>();
         chapter.Id = Guid.NewGuid();
         chapter.StoryProjectId = projectId;
+        var outline = request.StoryOutlineId.HasValue
+            ? await _outlineRepository.GetByIdAsync(projectId, request.StoryOutlineId.Value, cancellationToken)
+            : await _outlineRepository.GetOrCreateDefaultAsync(projectId, cancellationToken);
+        chapter.StoryOutlineId = outline?.Id
+            ?? throw new InvalidOperationException("故事大纲不存在");
+        if (request.AllowedRevealLevel.HasValue)
+            chapter.AllowedRevealLevel = (ChapterRevealLevel)request.AllowedRevealLevel.Value;
         // Mapster 可能把可空集合映射为 null，需确保非空
         chapter.KeyCharacterIds ??= new List<Guid>();
         chapter.MustIncludePoints ??= new List<string>();
@@ -24,9 +35,14 @@ public sealed class ChapterAppService
         return chapter.Adapt<ChapterResponse>();
     }
 
-    public async Task<List<ChapterResponse>> GetByProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
+    public async Task<List<ChapterResponse>> GetByProjectAsync(
+        Guid projectId,
+        Guid? storyOutlineId = null,
+        CancellationToken cancellationToken = default)
     {
-        var chapters = await _repository.GetByProjectAsync(projectId, cancellationToken);
+        var chapters = storyOutlineId.HasValue
+            ? await _repository.GetByOutlineAsync(projectId, storyOutlineId.Value, cancellationToken)
+            : await _repository.GetByProjectAsync(projectId, cancellationToken);
         return chapters.OrderBy(c => c.Number).Adapt<List<ChapterResponse>>();
     }
 
@@ -59,6 +75,19 @@ public sealed class ChapterAppService
         CancellationToken cancellationToken = default)
         => await _repository.BatchReorderAsync(projectId, orderedChapterIds, startNumber, cancellationToken);
 
+    public async Task<int> BatchReorderAsync(
+        Guid projectId,
+        Guid storyOutlineId,
+        IReadOnlyList<Guid> orderedChapterIds,
+        int startNumber = 1,
+        CancellationToken cancellationToken = default)
+    {
+        var outline = await _outlineRepository.GetByIdAsync(projectId, storyOutlineId, cancellationToken);
+        if (outline is null) throw new InvalidOperationException("故事大纲不存在");
+        return await _repository.BatchReorderAsync(
+            projectId, storyOutlineId, orderedChapterIds, startNumber, cancellationToken);
+    }
+
     public async Task<ChapterResponse?> UpdateAsync(Guid projectId, Guid chapterId, UpdateChapterRequest request, CancellationToken cancellationToken = default)
     {
         var existing = await _repository.GetByIdAsync(projectId, chapterId, cancellationToken);
@@ -70,6 +99,8 @@ public sealed class ChapterAppService
         if (request.DraftText is not null) existing.DraftText = request.DraftText;
         if (request.FinalText is not null) existing.FinalText = request.FinalText;
         if (request.Status.HasValue) existing.Status = (MuseSpace.Domain.Enums.ChapterStatus)request.Status.Value;
+        if (request.AllowedRevealLevel.HasValue)
+            existing.AllowedRevealLevel = (ChapterRevealLevel)request.AllowedRevealLevel.Value;
         if (request.Conflict is not null) existing.Conflict = request.Conflict;
         if (request.EmotionCurve is not null) existing.EmotionCurve = request.EmotionCurve;
         if (request.KeyCharacterIds is not null) existing.KeyCharacterIds = request.KeyCharacterIds;

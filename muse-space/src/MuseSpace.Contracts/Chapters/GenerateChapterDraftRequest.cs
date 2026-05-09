@@ -7,6 +7,12 @@ public sealed class GenerateChapterDraftRequest
     public string? ReferenceFocus { get; init; }
     public string? ReferenceStrength { get; init; }
 
+    /// <summary>
+    /// 是否启用项目级原著语义检索。默认 false，避免普通原创章节被导入原著片段污染。
+    /// 续写 / 番外模式请优先使用 SourceNovelId 限定来源。
+    /// </summary>
+    public bool IncludeNovelContext { get; init; }
+
     // ── 续写/外传模式（Module E）────────────────────────────────────
 
     /// <summary>

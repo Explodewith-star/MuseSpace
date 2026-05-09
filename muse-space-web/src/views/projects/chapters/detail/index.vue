@@ -4,7 +4,6 @@ import AppButton from '@/components/base/AppButton.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
-import AppSelect from '@/components/base/AppSelect.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AppCard from '@/components/base/AppCard.vue'
 import AppConfirm from '@/components/base/AppConfirm.vue'
@@ -17,7 +16,7 @@ const route = useRoute()
 const {
   chapter,
   characters,
-  novels,
+  outline,
   characterMap,
   consistencySuggestions,
   loading,
@@ -27,10 +26,6 @@ const {
   planForm,
   draftForm,
   finalForm,
-  referenceForm,
-  generationModeForm,
-  REFERENCE_FOCUS_OPTIONS,
-  REFERENCE_STRENGTH_OPTIONS,
   startEdit,
   cancelEdit,
   saveEdit,
@@ -48,6 +43,21 @@ const {
   adoptDraftConfirmVisible,
   adoptDraftConfirmInfo,
 } = initChapterDetailState()
+
+const MODE_LABELS: Record<string, string> = {
+  Original: '原创主线',
+  ContinueFromOriginal: '原著续写',
+  SideStoryFromOriginal: '支线番外',
+  ExpandOrRewrite: '扩写/改写',
+}
+
+const REVEAL_LEVEL_LABELS: Record<number, string> = {
+  0: '日常',
+  1: '伏笔',
+  2: '直接异常',
+  3: '正面冲突',
+  4: '揭示/收束',
+}
 
 function goBack() {
   router.push(`/projects/${route.params.id}/chapters`)
@@ -210,6 +220,12 @@ function severityLabel(s?: string): string {
               <li v-for="(p, i) in chapter.mustIncludePoints" :key="i">{{ p }}</li>
             </ul>
           </div>
+          <div class="field-block">
+            <span class="field-label">揭示等级</span>
+            <p class="field-value">
+              {{ chapter.allowedRevealLevel == null ? '自动推断' : REVEAL_LEVEL_LABELS[chapter.allowedRevealLevel] }}
+            </p>
+          </div>
           <div
             v-if="!chapter.conflict && !chapter.emotionCurve
               && (!chapter.keyCharacterIds || chapter.keyCharacterIds.length === 0)
@@ -272,6 +288,17 @@ function severityLabel(s?: string): string {
               <AppButton size="sm" variant="secondary" @click="addPlanPoint">添加</AppButton>
             </div>
           </div>
+          <div class="field-block">
+            <span class="field-label">揭示等级</span>
+            <select v-model.number="planForm.allowedRevealLevel" class="reveal-select">
+              <option :value="undefined">自动推断</option>
+              <option :value="0">日常</option>
+              <option :value="1">伏笔</option>
+              <option :value="2">直接异常</option>
+              <option :value="3">正面冲突</option>
+              <option :value="4">揭示/收束</option>
+            </select>
+          </div>
           <div class="edit-actions">
             <AppButton variant="secondary" size="sm" @click="cancelEdit">取消</AppButton>
             <AppButton size="sm" :loading="saving" @click="saveEdit">保存</AppButton>
@@ -317,70 +344,19 @@ function severityLabel(s?: string): string {
 
         <div v-if="editingSection !== 'draft'" class="mode-panel">
           <div class="mode-panel__head">
-            <span class="field-label">创作模式</span>
+            <span class="field-label">所属大纲</span>
+            <AppBadge v-if="outline" size="sm" variant="default">
+              {{ MODE_LABELS[outline.mode] }}
+            </AppBadge>
           </div>
-          <div class="mode-panel__row">
-            <div class="mode-panel__field">
-              <span class="mode-label">生成模式</span>
-              <select v-model="generationModeForm.mode" class="mode-select">
-                <option value="Original">🖊 原创（默认）</option>
-                <option value="ContinueFromOriginal">📖 原著续写</option>
-                <option value="SideStoryFromOriginal">🌿 支线番外</option>
-                <option value="ExpandOrRewrite">✏️ 扩写/改写</option>
-              </select>
-            </div>
-            <template v-if="generationModeForm.mode !== 'Original'">
-              <div class="mode-panel__field">
-                <span class="mode-label">关联原著</span>
-                <select v-model="generationModeForm.sourceNovelId" class="mode-select">
-                  <option value="">— 不指定 —</option>
-                  <option v-for="n in novels" :key="n.id" :value="n.id">{{ n.title }}</option>
-                </select>
-              </div>
-              <div class="mode-panel__field">
-                <span class="mode-label">正典约束</span>
-                <select v-model="generationModeForm.divergencePolicy" class="mode-select">
-                  <option value="StrictCanon">严格正典</option>
-                  <option value="SoftCanon">软正典（默认）</option>
-                  <option value="AlternateTimeline">平行线</option>
-                </select>
-              </div>
-            </template>
+          <div class="mode-panel__summary">
+            <strong>{{ outline?.name ?? '默认大纲' }}</strong>
+            <span v-if="outline?.outlineSummary">{{ outline.outlineSummary }}</span>
+            <span v-else-if="outline?.branchTopic">{{ outline.branchTopic }}</span>
           </div>
-          <template v-if="generationModeForm.mode === 'SideStoryFromOriginal'">
-            <div class="mode-panel__row">
-              <div class="mode-panel__field mode-panel__field--wide">
-                <span class="mode-label">番外主题</span>
-                <input
-                  v-model="generationModeForm.branchTopic"
-                  class="mode-input"
-                  placeholder="如：女主与配角在第3章相遇场景的番外"
-                />
-              </div>
-              <div class="mode-panel__field">
-                <span class="mode-label">原著 chunk 起始</span>
-                <input
-                  v-model.number="generationModeForm.originalRangeStart"
-                  class="mode-input mode-input--sm"
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                />
-              </div>
-              <div class="mode-panel__field">
-                <span class="mode-label">chunk 结束（不含）</span>
-                <input
-                  v-model.number="generationModeForm.originalRangeEnd"
-                  class="mode-input mode-input--sm"
-                  type="number"
-                  min="0"
-                  placeholder="5"
-                />
-              </div>
-            </div>
-          </template>
         </div>
 
+        <!-- 当前章节参考片段：临时关闭排查问题
         <div v-if="editingSection !== 'draft'" class="reference-panel">
           <div class="reference-panel__head">
             <span class="field-label">当前章节参考片段（可选）</span>
@@ -406,6 +382,7 @@ function severityLabel(s?: string): string {
             :rows="5"
           />
         </div>
+        -->
 
         <template v-if="editingSection !== 'draft'">
           <div v-if="chapter.draftText" class="text-content">{{ chapter.draftText }}</div>
@@ -914,6 +891,19 @@ function severityLabel(s?: string): string {
   gap: 8px;
 }
 
+.mode-panel__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.mode-panel__summary strong {
+  color: var(--color-text-primary);
+}
+
 .mode-panel__row {
   display: flex;
   flex-wrap: wrap;
@@ -977,5 +967,17 @@ function severityLabel(s?: string): string {
 
 .mode-input--sm {
   width: 90px;
+}
+
+.reveal-select {
+  height: 32px;
+  max-width: 180px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  outline: none;
 }
 </style>

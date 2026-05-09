@@ -33,7 +33,9 @@ public sealed class ChapterExportService : IChapterExportService
         var project = await _projectRepo.GetByIdAsync(projectId, cancellationToken);
         if (project is null) return null;
 
-        var allChapters = await _chapterRepo.GetByProjectAsync(projectId, cancellationToken);
+        var allChapters = options.StoryOutlineId.HasValue
+            ? await _chapterRepo.GetByOutlineAsync(projectId, options.StoryOutlineId.Value, cancellationToken)
+            : await _chapterRepo.GetByProjectAsync(projectId, cancellationToken);
         var filtered = allChapters
             .Where(c => options.FromNumber is null || c.Number >= options.FromNumber)
             .Where(c => options.ToNumber is null || c.Number <= options.ToNumber)

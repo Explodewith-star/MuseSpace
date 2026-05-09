@@ -10,6 +10,7 @@ public class MuseSpaceDbContext : DbContext
 
     // ── public schema：现有业务实体 ─────────────────────────────────────────
     public DbSet<StoryProject> StoryProjects => Set<StoryProject>();
+    public DbSet<StoryOutline> StoryOutlines => Set<StoryOutline>();
     public DbSet<Chapter> Chapters => Set<Chapter>();
     public DbSet<Scene> Scenes => Set<Scene>();
     public DbSet<Character> Characters => Set<Character>();
@@ -62,6 +63,27 @@ public class MuseSpaceDbContext : DbContext
             entity.HasIndex(e => e.UserId);
         });
 
+        // ── StoryOutline ────────────────────────────────────────────────────
+        modelBuilder.Entity<StoryOutline>(entity =>
+        {
+            entity.ToTable("story_outlines");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(300).IsRequired();
+            entity.Property(e => e.Mode).HasConversion<int>();
+            entity.Property(e => e.BranchTopic).HasColumnType("text");
+            entity.Property(e => e.ContinuationAnchor).HasColumnType("text");
+            entity.Property(e => e.DivergencePolicy).HasConversion<int>();
+            entity.Property(e => e.OutlineSummary).HasColumnType("text");
+            entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => new { e.StoryProjectId, e.IsDefault })
+                  .IsUnique()
+                  .HasFilter("\"IsDefault\" = TRUE");
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Novel>().WithMany().HasForeignKey(e => e.SourceNovelId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
         // ── Chapter ──────────────────────────────────────────────────────────
         modelBuilder.Entity<Chapter>(entity =>
         {
@@ -69,6 +91,7 @@ public class MuseSpaceDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Title).HasMaxLength(500);
             entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.AllowedRevealLevel).HasConversion<int>();
             entity.Property(e => e.Goal).HasColumnType("text");
             entity.Property(e => e.Summary).HasColumnType("text");
             entity.Property(e => e.DraftText).HasColumnType("text");
@@ -78,10 +101,13 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.KeyCharacterIds).HasColumnType("uuid[]").IsRequired(false);
             entity.Property(e => e.MustIncludePoints).HasColumnType("text[]").IsRequired(false);
             entity.Property(e => e.SourceSuggestionId);
+            entity.HasIndex(e => e.StoryOutlineId);
             entity.HasIndex(e => e.SourceSuggestionId);
             entity.HasIndex(e => e.StoryProjectId);
-            entity.HasIndex(e => new { e.StoryProjectId, e.Number }).IsUnique();
+            entity.HasIndex(e => new { e.StoryOutlineId, e.Number }).IsUnique();
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<StoryOutline>().WithMany().HasForeignKey(e => e.StoryOutlineId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -316,9 +342,14 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.TimePoint).HasMaxLength(200);
             entity.Property(e => e.Importance).HasMaxLength(20);
             entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => e.StoryOutlineId);
             entity.HasIndex(e => new { e.StoryProjectId, e.ChapterId });
             entity.HasIndex(e => new { e.StoryProjectId, e.IsIrreversible });
+            entity.HasIndex(e => new { e.StoryOutlineId, e.ChapterId });
+            entity.HasIndex(e => new { e.StoryOutlineId, e.IsIrreversible });
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<StoryOutline>().WithMany().HasForeignKey(e => e.StoryOutlineId)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Chapter>().WithMany().HasForeignKey(e => e.ChapterId)
                   .OnDelete(DeleteBehavior.Cascade);
@@ -334,10 +365,15 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.FactValue).HasMaxLength(500).IsRequired();
             entity.Property(e => e.Notes).HasColumnType("text");
             entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => e.StoryOutlineId);
             entity.HasIndex(e => new { e.StoryProjectId, e.FactType });
-            entity.HasIndex(e => new { e.StoryProjectId, e.FactType, e.FactKey }).IsUnique();
             entity.HasIndex(e => new { e.StoryProjectId, e.IsLocked });
+            entity.HasIndex(e => new { e.StoryOutlineId, e.FactType });
+            entity.HasIndex(e => new { e.StoryOutlineId, e.FactType, e.FactKey }).IsUnique();
+            entity.HasIndex(e => new { e.StoryOutlineId, e.IsLocked });
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<StoryOutline>().WithMany().HasForeignKey(e => e.StoryOutlineId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -370,11 +406,16 @@ public class MuseSpaceDbContext : DbContext
             entity.ToTable("chapter_batch_draft_runs");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.StoryOutlineId).IsRequired();
             entity.Property(e => e.FailedChapterIds).HasColumnType("uuid[]").IsRequired(false);
             entity.Property(e => e.ErrorMessage).HasColumnType("text");
             entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => e.StoryOutlineId);
             entity.HasIndex(e => new { e.StoryProjectId, e.Status });
+            entity.HasIndex(e => new { e.StoryOutlineId, e.Status });
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<StoryOutline>().WithMany().HasForeignKey(e => e.StoryOutlineId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -3,6 +3,9 @@ namespace MuseSpace.Contracts.Suggestions;
 /// <summary>大纲规划请求。</summary>
 public sealed class OutlinePlanRequest
 {
+    /// <summary>目标故事大纲。为空时使用默认大纲。</summary>
+    public Guid? StoryOutlineId { get; init; }
+
     /// <summary>故事目标描述。</summary>
     public string Goal { get; init; } = string.Empty;
 

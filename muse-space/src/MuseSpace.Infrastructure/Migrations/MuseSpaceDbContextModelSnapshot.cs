@@ -232,6 +232,9 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<Guid?>("SourceChapterId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("StoryOutlineId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("StoryProjectId")
                         .HasColumnType("uuid");
 
@@ -243,13 +246,19 @@ namespace MuseSpace.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StoryOutlineId");
+
                     b.HasIndex("StoryProjectId");
+
+                    b.HasIndex("StoryOutlineId", "FactType");
+
+                    b.HasIndex("StoryOutlineId", "IsLocked");
 
                     b.HasIndex("StoryProjectId", "FactType");
 
                     b.HasIndex("StoryProjectId", "IsLocked");
 
-                    b.HasIndex("StoryProjectId", "FactType", "FactKey")
+                    b.HasIndex("StoryOutlineId", "FactType", "FactKey")
                         .IsUnique();
 
                     b.ToTable("canon_facts", (string)null);
@@ -260,6 +269,9 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("AllowedRevealLevel")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Conflict")
                         .HasColumnType("text");
@@ -291,6 +303,9 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("StoryOutlineId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("StoryProjectId")
                         .HasColumnType("uuid");
 
@@ -305,9 +320,11 @@ namespace MuseSpace.Infrastructure.Migrations
 
                     b.HasIndex("SourceSuggestionId");
 
+                    b.HasIndex("StoryOutlineId");
+
                     b.HasIndex("StoryProjectId");
 
-                    b.HasIndex("StoryProjectId", "Number")
+                    b.HasIndex("StoryOutlineId", "Number")
                         .IsUnique();
 
                     b.ToTable("chapters", (string)null);
@@ -361,6 +378,9 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("StoryOutlineId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("StoryProjectId")
                         .HasColumnType("uuid");
 
@@ -375,7 +395,11 @@ namespace MuseSpace.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StoryOutlineId");
+
                     b.HasIndex("StoryProjectId");
+
+                    b.HasIndex("StoryOutlineId", "Status");
 
                     b.HasIndex("StoryProjectId", "Status");
 
@@ -420,6 +444,9 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<int>("Order")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("StoryOutlineId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("StoryProjectId")
                         .HasColumnType("uuid");
 
@@ -437,7 +464,13 @@ namespace MuseSpace.Infrastructure.Migrations
 
                     b.HasIndex("ChapterId");
 
+                    b.HasIndex("StoryOutlineId");
+
                     b.HasIndex("StoryProjectId");
+
+                    b.HasIndex("StoryOutlineId", "ChapterId");
+
+                    b.HasIndex("StoryOutlineId", "IsIrreversible");
 
                     b.HasIndex("StoryProjectId", "ChapterId");
 
@@ -849,6 +882,69 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.ToTable("scenes", (string)null);
                 });
 
+            modelBuilder.Entity("MuseSpace.Domain.Entities.StoryOutline", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BranchTopic")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContinuationAnchor")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DivergencePolicy")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("OutlineSummary")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SourceNovelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("SourceRangeEnd")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SourceRangeStart")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StoryProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("TargetChapterCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceNovelId");
+
+                    b.HasIndex("StoryProjectId");
+
+                    b.HasIndex("StoryProjectId", "IsDefault")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\" = TRUE");
+
+                    b.ToTable("story_outlines", (string)null);
+                });
+
             modelBuilder.Entity("MuseSpace.Domain.Entities.StoryProject", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1060,6 +1156,12 @@ namespace MuseSpace.Infrastructure.Migrations
 
             modelBuilder.Entity("MuseSpace.Domain.Entities.CanonFact", b =>
                 {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryOutline", null)
+                        .WithMany()
+                        .HasForeignKey("StoryOutlineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
                         .WithMany()
                         .HasForeignKey("StoryProjectId")
@@ -1069,6 +1171,12 @@ namespace MuseSpace.Infrastructure.Migrations
 
             modelBuilder.Entity("MuseSpace.Domain.Entities.Chapter", b =>
                 {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryOutline", null)
+                        .WithMany()
+                        .HasForeignKey("StoryOutlineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
                         .WithMany()
                         .HasForeignKey("StoryProjectId")
@@ -1078,6 +1186,12 @@ namespace MuseSpace.Infrastructure.Migrations
 
             modelBuilder.Entity("MuseSpace.Domain.Entities.ChapterBatchDraftRun", b =>
                 {
+                    b.HasOne("MuseSpace.Domain.Entities.StoryOutline", null)
+                        .WithMany()
+                        .HasForeignKey("StoryOutlineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
                         .WithMany()
                         .HasForeignKey("StoryProjectId")
@@ -1090,6 +1204,12 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.HasOne("MuseSpace.Domain.Entities.Chapter", null)
                         .WithMany()
                         .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MuseSpace.Domain.Entities.StoryOutline", null)
+                        .WithMany()
+                        .HasForeignKey("StoryOutlineId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1149,6 +1269,20 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.HasOne("MuseSpace.Domain.Entities.Chapter", null)
                         .WithMany()
                         .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MuseSpace.Domain.Entities.StoryOutline", b =>
+                {
+                    b.HasOne("MuseSpace.Domain.Entities.Novel", null)
+                        .WithMany()
+                        .HasForeignKey("SourceNovelId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
+                        .WithMany()
+                        .HasForeignKey("StoryProjectId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

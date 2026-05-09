@@ -6,10 +6,12 @@ public class Chapter
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StoryProjectId { get; set; }
+    public Guid StoryOutlineId { get; set; }
     public int Number { get; set; }
     public string? Title { get; set; }
     public string? Goal { get; set; }
     public ChapterStatus Status { get; set; } = ChapterStatus.Planned;
+    public ChapterRevealLevel? AllowedRevealLevel { get; set; }
     public string? Summary { get; set; }
     public string? DraftText { get; set; }
     public string? FinalText { get; set; }

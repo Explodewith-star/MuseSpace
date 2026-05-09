@@ -1,6 +1,7 @@
 export type ExportFormat = 'md' | 'txt'
 
 export interface ExportChaptersOptions {
+  storyOutlineId?: string
   format?: ExportFormat
   from?: number
   to?: number
@@ -18,6 +19,7 @@ export async function exportProjectChapters(
 ): Promise<void> {
   const params = new URLSearchParams()
   params.set('format', options.format ?? 'md')
+  if (options.storyOutlineId) params.set('storyOutlineId', options.storyOutlineId)
   if (options.from != null) params.set('from', String(options.from))
   if (options.to != null) params.set('to', String(options.to))
   params.set('onlyFinal', String(options.onlyFinal ?? true))

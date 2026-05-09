@@ -3,6 +3,9 @@ namespace MuseSpace.Contracts.Chapters;
 /// <summary>批量生成章节草稿的请求体。</summary>
 public sealed class BatchGenerateDraftRequest
 {
+    /// <summary>目标故事大纲。为空时使用默认大纲。</summary>
+    public Guid? StoryOutlineId { get; set; }
+
     public int FromNumber { get; set; }
     public int ToNumber { get; set; }
 

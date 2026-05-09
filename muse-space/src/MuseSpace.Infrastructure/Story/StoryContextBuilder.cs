@@ -36,6 +36,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
     private readonly ICharacterRepository _characterRepo;
     private readonly IWorldRuleRepository _worldRuleRepo;
     private readonly IChapterRepository _chapterRepo;
+    private readonly IStoryOutlineRepository _outlineRepo;
     private readonly IStyleProfileRepository _styleProfileRepo;
     private readonly INovelMemorySearchService _novelMemorySearchService;
     private readonly IChapterEventRepository _eventRepo;
@@ -50,6 +51,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         ICharacterRepository characterRepo,
         IWorldRuleRepository worldRuleRepo,
         IChapterRepository chapterRepo,
+        IStoryOutlineRepository outlineRepo,
         IStyleProfileRepository styleProfileRepo,
         INovelMemorySearchService novelMemorySearchService,
         IChapterEventRepository eventRepo,
@@ -63,6 +65,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         _characterRepo = characterRepo;
         _worldRuleRepo = worldRuleRepo;
         _chapterRepo = chapterRepo;
+        _outlineRepo = outlineRepo;
         _styleProfileRepo = styleProfileRepo;
         _novelMemorySearchService = novelMemorySearchService;
         _eventRepo = eventRepo;
@@ -78,7 +81,28 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         var project = await _projectRepo.GetByIdAsync(request.StoryProjectId, cancellationToken);
 
         var chapters = await _chapterRepo.GetByProjectAsync(request.StoryProjectId, cancellationToken);
-        var recentSummaries = chapters
+        var outlines = await _outlineRepo.GetByProjectAsync(request.StoryProjectId, cancellationToken);
+        var currentChapter = request.ChapterId.HasValue
+            ? chapters.FirstOrDefault(c => c.Id == request.ChapterId.Value)
+            : null;
+        var currentOutlineId = request.OutlineId
+            ?? currentChapter?.StoryOutlineId
+            ?? outlines.FirstOrDefault(o => o.IsDefault)?.Id;
+        var scopedChapters = currentOutlineId.HasValue
+            ? chapters.Where(c => c.StoryOutlineId == currentOutlineId.Value).ToList()
+            : chapters;
+        var currentOutline = currentOutlineId.HasValue
+            ? outlines.FirstOrDefault(o => o.Id == currentOutlineId.Value)
+            : null;
+
+        // 若知道当前章节，只取编号严格小于当前章的章节作为"已发生"上下文，
+        // 避免把后续章节的摘要/事件错误地注入 Prompt 导致内容错位。
+        var currentChapterNumber = currentChapter?.Number;
+        var priorChapters = currentChapterNumber.HasValue
+            ? scopedChapters.Where(c => c.Number < currentChapterNumber.Value).ToList()
+            : scopedChapters;
+
+        var recentSummaries = priorChapters
             .Where(c => !string.IsNullOrWhiteSpace(c.Summary))
             .OrderByDescending(c => c.Number)
             .Take(3)
@@ -108,9 +132,18 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         // 1. 最近事件：取最近 3 个有事件的章节，依照 “第N章 - 事件” 拼接。
         // 2. 人物状态快照：Active（未被废弃）且已锁定的 Relationship / Identity / LifeStatus。
         // 3. 不可重复事实：已锁定的 UniqueEvent 事实 + 所有历史不可逆事件。
-        var recentEvents = await _eventRepo.GetRecentAsync(request.StoryProjectId, chapterCount: 3, cancellationToken);
-        var chapterById = chapters.ToDictionary(c => c.Id, c => c);
-        var recentEventLines = recentEvents
+        var priorChapterIds = priorChapters.Select(c => c.Id).ToHashSet();
+        var recentEventChapterIds = priorChapters
+            .OrderByDescending(c => c.Number)
+            .Take(3)
+            .Select(c => c.Id)
+            .ToHashSet();
+        var chapterById = scopedChapters.ToDictionary(c => c.Id, c => c);
+        var projectEvents = await _eventRepo.GetByProjectAsync(request.StoryProjectId, cancellationToken);
+        var recentEventLines = projectEvents
+            .Where(e => recentEventChapterIds.Contains(e.ChapterId))
+            .OrderBy(e => chapterById.TryGetValue(e.ChapterId, out var ch) ? ch.Number : int.MaxValue)
+            .ThenBy(e => e.Order)
             .Select(e =>
             {
                 var num = chapterById.TryGetValue(e.ChapterId, out var ch) ? $"第 {ch.Number} 章" : "未知章";
@@ -119,20 +152,24 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
             })
             .ToList();
 
-        var activeFacts = await _factRepo.GetActiveAsync(request.StoryProjectId, cancellationToken);
-        var stateFacts = activeFacts
+        var scopedActiveFacts = await GetFactsVisibleToChapterAsync(
+            request, chapters, cancellationToken);
+        var stateFacts = scopedActiveFacts
             .Where(f => f.IsLocked &&
                 (f.FactType == "Relationship" || f.FactType == "Identity" || f.FactType == "LifeStatus"))
             .Select(f => $"[{f.FactType}] {f.FactKey} = {f.FactValue}")
             .ToList();
 
-        var immutableFromFacts = activeFacts
+        var immutableFromFacts = scopedActiveFacts
             .Where(f => f.IsLocked && f.FactType == "UniqueEvent")
             .Select(f => $"★ {f.FactKey} 已发生（{f.FactValue}）")
             .ToList();
         // 则外带上过往不可逆事件（可能尚未被 Canon 抽取为 UniqueEvent）
-        var irreversibleEvents = await _eventRepo.GetIrreversibleAsync(request.StoryProjectId, cancellationToken);
-        var immutableFromEvents = irreversibleEvents
+        var immutableFromEvents = projectEvents
+            .Where(e => !currentChapterNumber.HasValue || priorChapterIds.Contains(e.ChapterId))
+            .Where(e => e.IsIrreversible)
+            .OrderBy(e => chapterById.TryGetValue(e.ChapterId, out var ch) ? ch.Number : int.MaxValue)
+            .ThenBy(e => e.Order)
             .Select(e =>
             {
                 var num = chapterById.TryGetValue(e.ChapterId, out var ch) ? $"第 {ch.Number} 章" : "未知章";
@@ -167,6 +204,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
             NovelEndingSummary = modeResult.EndingSummary,
             NovelStyleSummary = modeResult.StyleSummary,
             NovelCharacterEndStates = modeResult.CharacterEndStates,
+            OutlineSummary = currentOutline is not null ? BuildOutlineSummary(currentOutline) : null,
         };
     }
 
@@ -308,6 +346,14 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
     private async Task<List<string>> GetNovelContextSnippetsAsync(
         StoryContextRequest request, CancellationToken cancellationToken)
     {
+        if (!request.IncludeNovelContext)
+        {
+            _logger.LogDebug(
+                "[StoryContext] novel snippets skipped, IncludeNovelContext=false (project={ProjectId}, chapter={ChapterId})",
+                request.StoryProjectId, request.ChapterId);
+            return [];
+        }
+
         if (string.IsNullOrWhiteSpace(request.SceneGoal))
         {
             _logger.LogDebug(
@@ -351,6 +397,35 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         }
     }
 
+    private async Task<List<CanonFact>> GetFactsVisibleToChapterAsync(
+        StoryContextRequest request,
+        List<Chapter> chapters,
+        CancellationToken cancellationToken)
+    {
+        var currentOutlineId = request.OutlineId;
+        if (!currentOutlineId.HasValue && request.ChapterId.HasValue)
+            currentOutlineId = chapters.FirstOrDefault(c => c.Id == request.ChapterId.Value)?.StoryOutlineId;
+        var activeFacts = currentOutlineId.HasValue
+            ? await _factRepo.GetActiveByOutlineAsync(request.StoryProjectId, currentOutlineId.Value, cancellationToken)
+            : await _factRepo.GetActiveAsync(request.StoryProjectId, cancellationToken);
+        if (!request.ChapterId.HasValue) return activeFacts;
+
+        if (currentOutlineId.HasValue)
+        {
+            chapters = chapters.Where(c => c.StoryOutlineId == currentOutlineId.Value).ToList();
+        }
+
+        var currentChapterNumber = chapters.FirstOrDefault(c => c.Id == request.ChapterId.Value)?.Number;
+        if (!currentChapterNumber.HasValue) return activeFacts;
+
+        var chapterNumberById = chapters.ToDictionary(c => c.Id, c => c.Number);
+        return activeFacts
+            .Where(f => f.SourceChapterId is null
+                || (chapterNumberById.TryGetValue(f.SourceChapterId.Value, out var sourceNumber)
+                    && sourceNumber < currentChapterNumber.Value))
+            .ToList();
+    }
+
     private static string TruncateWithEllipsis(string text, int maxChars)
     {
         if (string.IsNullOrEmpty(text) || text.Length <= maxChars) return text;
@@ -363,10 +438,12 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         if (c.Age.HasValue) parts.Add($"{c.Age}岁");
         if (!string.IsNullOrWhiteSpace(c.Role)) parts.Add(c.Role);
         if (!string.IsNullOrWhiteSpace(c.PersonalitySummary)) parts.Add($"性格：{c.PersonalitySummary}");
-        if (!string.IsNullOrWhiteSpace(c.Motivation)) parts.Add($"动机：{c.Motivation}");
         if (!string.IsNullOrWhiteSpace(c.SpeakingStyle)) parts.Add($"说话方式：{c.SpeakingStyle}");
-        if (!string.IsNullOrWhiteSpace(c.CurrentState)) parts.Add($"当前状态：{c.CurrentState}");
         if (!string.IsNullOrWhiteSpace(c.ForbiddenBehaviors)) parts.Add($"禁止行为：{c.ForbiddenBehaviors}");
+        // 注意：Motivation / CurrentState 故意不注入。
+        // 这两个字段从原著抽取时通常代表「结局态/最终动机」（如 "已被鬼附身"、"为某人复仇"），
+        // 注入后会让 LLM 写早期章节时直接演绎结局剧情，造成驴头不对马嘴。
+        // 当前章节应处于的状态请通过章节计划（Conflict / MustIncludePoints / Goal）引导。
         return string.Join("；", parts);
     }
 
@@ -380,5 +457,16 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         if (!string.IsNullOrWhiteSpace(profile.DescriptionDensity)) parts.Add($"描写密度：{profile.DescriptionDensity}");
         if (!string.IsNullOrWhiteSpace(profile.ForbiddenExpressions)) parts.Add($"禁用表达：{profile.ForbiddenExpressions}");
         return parts.Count > 0 ? string.Join("；", parts) : null;
+    }
+
+    private static string BuildOutlineSummary(StoryOutline outline)
+    {
+        var parts = new List<string> { $"【大纲】{outline.Name}" };
+        parts.Add($"模式：{outline.Mode}");
+        if (outline.IsDefault) parts.Add("默认主线");
+        if (!string.IsNullOrWhiteSpace(outline.OutlineSummary)) parts.Add($"摘要：{outline.OutlineSummary}");
+        if (!string.IsNullOrWhiteSpace(outline.BranchTopic)) parts.Add($"主题：{outline.BranchTopic}");
+        if (!string.IsNullOrWhiteSpace(outline.ContinuationAnchor)) parts.Add($"锚点：{outline.ContinuationAnchor}");
+        return string.Join("；", parts);
     }
 }

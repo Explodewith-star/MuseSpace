@@ -1,8 +1,13 @@
 import request from './http'
 import type { ChapterResponse, CreateChapterRequest, UpdateChapterRequest } from '@/types/models'
 
-export function getChapters(projectId: string): Promise<ChapterResponse[]> {
-  return request.get(`/projects/${projectId}/chapters`)
+export function getChapters(
+  projectId: string,
+  storyOutlineId?: string,
+): Promise<ChapterResponse[]> {
+  return request.get(`/projects/${projectId}/chapters`, {
+    params: storyOutlineId ? { storyOutlineId } : undefined,
+  })
 }
 
 export function getChapter(projectId: string, chapterId: string): Promise<ChapterResponse> {
@@ -41,8 +46,10 @@ export function batchReorderChapters(
   projectId: string,
   chapterIds: string[],
   startNumber = 1,
+  storyOutlineId?: string,
 ): Promise<number> {
   return request.post(`/projects/${projectId}/chapters/batch-reorder`, {
+    storyOutlineId,
     chapterIds,
     startNumber,
   })
@@ -58,6 +65,7 @@ export interface GenerateChapterDraftRequest {
   referenceText?: string
   referenceFocus?: string
   referenceStrength?: string
+  includeNovelContext?: boolean
   // Module E：续写/外传模式
   generationMode?: 'Original' | 'ContinueFromOriginal' | 'SideStoryFromOriginal' | 'ExpandOrRewrite'
   sourceNovelId?: string
@@ -108,6 +116,7 @@ export function adoptChapterDraft(
 
 /// <summary>批量生成草稿请求体。</summary>
 export interface BatchGenerateDraftRequest {
+  storyOutlineId?: string
   fromNumber: number
   toNumber: number
   /** 是否跳过已有草稿的章节，默认 false（覆盖原草稿）。 */
@@ -120,6 +129,7 @@ export interface BatchGenerateDraftRequest {
 export interface ChapterBatchDraftRunResponse {
   id: string
   storyProjectId: string
+  storyOutlineId: string
   fromNumber: number
   toNumber: number
   totalCount: number
@@ -171,9 +181,10 @@ export function getChapterBatchRun(
 export function listChapterBatchRuns(
   projectId: string,
   take = 10,
+  storyOutlineId?: string,
 ): Promise<ChapterBatchDraftRunResponse[]> {
   return request.get(`/projects/${projectId}/chapter-batch-runs`, {
-    params: { take },
+    params: storyOutlineId ? { take, storyOutlineId } : { take },
   })
 }
 

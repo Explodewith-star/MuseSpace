@@ -94,6 +94,7 @@ public sealed class BatchChapterDraftJob
 
         var chapters = await _db.Chapters
             .Where(c => c.StoryProjectId == run.StoryProjectId
+                     && c.StoryOutlineId == run.StoryOutlineId
                      && c.Number >= run.FromNumber
                      && c.Number <= run.ToNumber)
             .OrderBy(c => c.Number)
@@ -232,7 +233,7 @@ public sealed class BatchChapterDraftJob
             else if (batchCts.IsCancellationRequested)
             {
                 run.Status = ChapterBatchDraftStatus.Failed;
-                run.ErrorMessage = "整批超时（30 分钟）";
+                run.ErrorMessage = "整批超时（45 分钟）";
             }
             else if (run.FailedCount > 0 && run.CompletedCount > 0)
             {

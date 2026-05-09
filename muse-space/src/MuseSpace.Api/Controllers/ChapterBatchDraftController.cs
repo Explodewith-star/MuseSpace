@@ -26,15 +26,18 @@ public class ChapterBatchDraftController : ControllerBase
 
     private readonly IChapterBatchDraftRunRepository _runRepo;
     private readonly IChapterRepository _chapterRepo;
+    private readonly IStoryOutlineRepository _outlineRepo;
     private readonly IBackgroundJobClient _backgroundJobs;
 
     public ChapterBatchDraftController(
         IChapterBatchDraftRunRepository runRepo,
         IChapterRepository chapterRepo,
+        IStoryOutlineRepository outlineRepo,
         IBackgroundJobClient backgroundJobs)
     {
         _runRepo = runRepo;
         _chapterRepo = chapterRepo;
+        _outlineRepo = outlineRepo;
         _backgroundJobs = backgroundJobs;
     }
 
@@ -65,7 +68,15 @@ public class ChapterBatchDraftController : ControllerBase
                 $"单批最多 {HardMaxBatchSize} 章"));
         }
 
-        var allChapters = await _chapterRepo.GetByProjectAsync(projectId, ct);
+        var outline = request.StoryOutlineId.HasValue
+            ? await _outlineRepo.GetByIdAsync(projectId, request.StoryOutlineId.Value, ct)
+            : await _outlineRepo.GetOrCreateDefaultAsync(projectId, ct);
+        if (outline is null)
+        {
+            return BadRequest(ApiResponse<ChapterBatchDraftRunResponse>.Fail("故事大纲不存在"));
+        }
+
+        var allChapters = await _chapterRepo.GetByOutlineAsync(projectId, outline.Id, ct);
         var rangeChapters = allChapters
             .Where(c => c.Number >= request.FromNumber && c.Number <= request.ToNumber)
             .ToList();
@@ -77,16 +88,17 @@ public class ChapterBatchDraftController : ControllerBase
         // 自动清理卡死（超过 60 分钟仍为 Pending/Running）的历史批次，防止永久阻塞
         await _runRepo.MarkStaleRunsAsFailedAsync(projectId, ct);
 
-        if (await _runRepo.HasActiveAsync(projectId, ct))
+        if (await _runRepo.HasActiveAsync(projectId, outline.Id, ct))
         {
             return Conflict(ApiResponse<ChapterBatchDraftRunResponse>.Fail(
-                "该项目已有进行中的批量任务，请等待其完成或先中止"));
+                "该大纲已有进行中的批量任务，请等待其完成或先中止"));
         }
 
         var run = new ChapterBatchDraftRun
         {
             Id = Guid.NewGuid(),
             StoryProjectId = projectId,
+            StoryOutlineId = outline.Id,
             UserId = CurrentUserId,
             FromNumber = request.FromNumber,
             ToNumber = request.ToNumber,
@@ -117,10 +129,15 @@ public class ChapterBatchDraftController : ControllerBase
     /// <summary>列出最近批次（默认 10 条）。</summary>
     [HttpGet("chapter-batch-runs")]
     public async Task<ActionResult<ApiResponse<List<ChapterBatchDraftRunResponse>>>> ListRecent(
-        Guid projectId, [FromQuery] int take = 10, CancellationToken ct = default)
+        Guid projectId,
+        [FromQuery] Guid? storyOutlineId,
+        [FromQuery] int take = 10,
+        CancellationToken ct = default)
     {
         if (take <= 0 || take > 100) take = 10;
-        var runs = await _runRepo.ListRecentAsync(projectId, take, ct);
+        var runs = storyOutlineId.HasValue
+            ? await _runRepo.ListRecentAsync(projectId, storyOutlineId.Value, take, ct)
+            : await _runRepo.ListRecentAsync(projectId, take, ct);
         return Ok(ApiResponse<List<ChapterBatchDraftRunResponse>>.Ok(
             runs.Select(Map).ToList()));
     }

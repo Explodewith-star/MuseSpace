@@ -10,7 +10,7 @@ import {
   type GenerateChapterDraftRequest,
 } from '@/api/chapters'
 import { getCharacters } from '@/api/characters'
-import { getNovels } from '@/api/novels'
+import { getStoryOutline } from '@/api/outlines'
 import { getSuggestions } from '@/api/suggestions'
 import { useToast } from '@/composables/useToast'
 import { useAgentProgress } from '@/composables/useAgentProgress'
@@ -18,8 +18,8 @@ import type {
   AgentSuggestionResponse,
   ChapterResponse,
   CharacterResponse,
+  StoryOutlineResponse,
   UpdateChapterRequest,
-  NovelResponse,
 } from '@/types/models'
 
 export const CHAPTER_STATUS_LABELS: Record<number, string> = {
@@ -67,7 +67,7 @@ export function initChapterDetailState() {
   const saving = ref(false)
   const editingSection = ref<EditableSection>(null)
   const characters = ref<CharacterResponse[]>([])
-  const novels = ref<NovelResponse[]>([])
+  const outline = ref<StoryOutlineResponse | null>(null)
   const consistencySuggestions = ref<AgentSuggestionResponse[]>([])
 
   // 自动规划/草稿生成 loading
@@ -88,6 +88,7 @@ export function initChapterDetailState() {
     emotionCurve: '',
     keyCharacterIds: [] as string[],
     mustIncludePoints: [] as string[],
+    allowedRevealLevel: undefined as number | undefined,
     pointInput: '',
   })
   const draftForm = reactive({ draftText: '' })
@@ -98,31 +99,19 @@ export function initChapterDetailState() {
     strength: 'Medium',
   })
 
-  // Module E：创作模式表单
-  const generationModeForm = reactive({
-    mode: 'Original' as 'Original' | 'ContinueFromOriginal' | 'SideStoryFromOriginal' | 'ExpandOrRewrite',
-    sourceNovelId: '',
-    branchTopic: '',
-    originalRangeStart: undefined as number | undefined,
-    originalRangeEnd: undefined as number | undefined,
-    divergencePolicy: 'SoftCanon' as 'StrictCanon' | 'SoftCanon' | 'AlternateTimeline',
-  })
-
   async function load() {
     loading.value = true
     try {
       // 并行加载章节、角色、原著、一致性建议
-      const [chapterData, , ,] = await Promise.all([
+      const [chapterData, ,] = await Promise.all([
         getChapter(projectId.value, chapterId.value),
         characters.value.length === 0
           ? getCharacters(projectId.value).then((res) => { characters.value = res }).catch(() => {})
           : Promise.resolve(),
-        novels.value.length === 0
-          ? getNovels(projectId.value).then((res) => { novels.value = res }).catch(() => {})
-          : Promise.resolve(),
         loadConsistency(),
       ])
       chapter.value = chapterData
+      outline.value = await getStoryOutline(projectId.value, chapterData.storyOutlineId).catch(() => null)
     } catch {
       router.push(`/projects/${projectId.value}/chapters`)
     } finally {
@@ -155,6 +144,7 @@ export function initChapterDetailState() {
       planForm.emotionCurve = chapter.value.emotionCurve ?? ''
       planForm.keyCharacterIds = [...(chapter.value.keyCharacterIds ?? [])]
       planForm.mustIncludePoints = [...(chapter.value.mustIncludePoints ?? [])]
+      planForm.allowedRevealLevel = chapter.value.allowedRevealLevel
       planForm.pointInput = ''
     } else if (section === 'draft') {
       draftForm.draftText = chapter.value.draftText ?? ''
@@ -198,6 +188,7 @@ export function initChapterDetailState() {
       payload.emotionCurve = planForm.emotionCurve
       payload.keyCharacterIds = [...planForm.keyCharacterIds]
       payload.mustIncludePoints = [...planForm.mustIncludePoints]
+      payload.allowedRevealLevel = planForm.allowedRevealLevel
     } else if (editingSection.value === 'draft') {
       payload.draftText = draftForm.draftText
     } else if (editingSection.value === 'final') {
@@ -237,19 +228,6 @@ export function initChapterDetailState() {
         payload.referenceText = referenceText
         payload.referenceFocus = referenceForm.focus
         payload.referenceStrength = referenceForm.strength
-      }
-      // Module E：续写/外传模式参数
-      if (generationModeForm.mode !== 'Original') {
-        payload.generationMode = generationModeForm.mode
-        if (generationModeForm.sourceNovelId)
-          payload.sourceNovelId = generationModeForm.sourceNovelId
-        if (generationModeForm.branchTopic.trim())
-          payload.branchTopic = generationModeForm.branchTopic.trim()
-        if (generationModeForm.originalRangeStart !== undefined)
-          payload.originalRangeStart = generationModeForm.originalRangeStart
-        if (generationModeForm.originalRangeEnd !== undefined)
-          payload.originalRangeEnd = generationModeForm.originalRangeEnd
-        payload.divergencePolicy = generationModeForm.divergencePolicy
       }
       await generateChapterDraft(projectId.value, chapterId.value, payload)
       toast.success('已提交草稿生成任务，请稍候...')
@@ -364,7 +342,7 @@ export function initChapterDetailState() {
   return {
     chapter,
     characters,
-    novels,
+    outline,
     characterMap,
     consistencySuggestions,
     loading,
@@ -375,7 +353,6 @@ export function initChapterDetailState() {
     draftForm,
     finalForm,
     referenceForm,
-    generationModeForm,
     REFERENCE_FOCUS_OPTIONS,
     REFERENCE_STRENGTH_OPTIONS,
     startEdit,

@@ -1,4 +1,4 @@
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   getChapters,
@@ -10,7 +10,7 @@ import { useToast } from '@/composables/useToast'
 import type { ChapterResponse } from '@/types/models'
 import type { CreateChapterForm } from './types'
 
-export function initChaptersState() {
+export function initChaptersState(options?: { getSelectedOutlineId?: () => string | undefined }) {
   const route = useRoute()
   const toast = useToast()
   const projectId = route.params.id as string
@@ -30,7 +30,7 @@ export function initChaptersState() {
   async function loadChapters(): Promise<void> {
     loading.value = true
     try {
-      const list = await getChapters(projectId)
+      const list = await getChapters(projectId, options?.getSelectedOutlineId?.())
       chapters.value = list.sort((a, b) => a.number - b.number)
     } catch {
       // handled
@@ -51,6 +51,7 @@ export function initChaptersState() {
     try {
       const chapter = await createChapter(projectId, {
         number: num,
+        storyOutlineId: options?.getSelectedOutlineId?.(),
         title: createForm.title || undefined,
         summary: createForm.summary || undefined,
         goal: createForm.goal || undefined,
@@ -85,8 +86,6 @@ export function initChaptersState() {
     }
   }
 
-  onMounted(loadChapters)
-
   /**
    * 重排所有章节编号：按当前列表顺序（已按 Number 升序）重新赋值 1..N，
    * 用于消除删除章节后编号出现的空洞。
@@ -102,7 +101,7 @@ export function initChaptersState() {
     }
     reorderLoading.value = true
     try {
-      const updated = await batchReorderChapters(projectId, ids, 1)
+      const updated = await batchReorderChapters(projectId, ids, 1, options?.getSelectedOutlineId?.())
       // 本地同步：直接按顺序重赋 number，避免再发一次 GET
       chapters.value = chapters.value.map((c, i) => ({ ...c, number: i + 1 }))
       toast.success(`重排完成，共更新 ${updated} 个章节`)

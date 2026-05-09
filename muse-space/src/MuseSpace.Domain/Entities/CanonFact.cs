@@ -9,6 +9,7 @@ public class CanonFact
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StoryProjectId { get; set; }
+    public Guid StoryOutlineId { get; set; }
 
     /// <summary>事实类型：Relationship / Identity / LifeStatus / WorldState / UniqueEvent。</summary>
     public string FactType { get; set; } = string.Empty;

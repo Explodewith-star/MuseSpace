@@ -9,7 +9,7 @@ public sealed class NovelTextChunkerTests
     [Fact]
     public void Split_DoesNotEndChunkInsideSurrogatePair()
     {
-        var content = new string('甲', 799) + "😀" + new string('乙', 40);
+        var content = new string('甲', 1599) + "😀" + new string('乙', 200);
 
         var chunks = _chunker.Split(content, Guid.NewGuid(), Guid.NewGuid());
 
@@ -21,7 +21,7 @@ public sealed class NovelTextChunkerTests
     [Fact]
     public void Split_DoesNotStartOverlapInsideSurrogatePair()
     {
-        var content = new string('甲', 719) + "😀" + new string('乙', 200);
+        var content = new string('甲', 1479) + "😀" + new string('乙', 300);
 
         var chunks = _chunker.Split(content, Guid.NewGuid(), Guid.NewGuid());
 

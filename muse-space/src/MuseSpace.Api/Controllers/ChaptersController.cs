@@ -34,9 +34,11 @@ public class ChaptersController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<ChapterResponse>>>> GetAll(
-        Guid projectId, CancellationToken cancellationToken)
+        Guid projectId,
+        [FromQuery] Guid? storyOutlineId,
+        CancellationToken cancellationToken)
     {
-        var result = await _service.GetByProjectAsync(projectId, cancellationToken);
+        var result = await _service.GetByProjectAsync(projectId, storyOutlineId, cancellationToken);
         return Ok(ApiResponse<List<ChapterResponse>>.Ok(result));
     }
 
@@ -75,8 +77,11 @@ public class ChaptersController : ControllerBase
     public async Task<ActionResult<ApiResponse<int>>> BatchReorder(
         Guid projectId, [FromBody] BatchReorderChaptersRequest request, CancellationToken cancellationToken)
     {
-        var count = await _service.BatchReorderAsync(
-            projectId, request.ChapterIds, request.StartNumber, cancellationToken);
+        var count = request.StoryOutlineId.HasValue
+            ? await _service.BatchReorderAsync(
+                projectId, request.StoryOutlineId.Value, request.ChapterIds, request.StartNumber, cancellationToken)
+            : await _service.BatchReorderAsync(
+                projectId, request.ChapterIds, request.StartNumber, cancellationToken);
         return Ok(ApiResponse<int>.Ok(count));
     }
 

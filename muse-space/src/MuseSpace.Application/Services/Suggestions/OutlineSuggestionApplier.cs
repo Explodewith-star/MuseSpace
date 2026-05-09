@@ -13,9 +13,15 @@ namespace MuseSpace.Application.Services.Suggestions;
 public sealed class OutlineSuggestionApplier : ISuggestionApplier
 {
     private readonly IChapterRepository _chapterRepository;
+    private readonly IStoryOutlineRepository _outlineRepository;
 
-    public OutlineSuggestionApplier(IChapterRepository chapterRepository)
-        => _chapterRepository = chapterRepository;
+    public OutlineSuggestionApplier(
+        IChapterRepository chapterRepository,
+        IStoryOutlineRepository outlineRepository)
+    {
+        _chapterRepository = chapterRepository;
+        _outlineRepository = outlineRepository;
+    }
 
     public string Category => SuggestionCategories.Outline;
 
@@ -55,12 +61,20 @@ public sealed class OutlineSuggestionApplier : ISuggestionApplier
         if (chapters.Count == 0)
             throw new InvalidOperationException("大纲为空，无可导入章节");
 
+        var outline = suggestion.TargetEntityId.HasValue
+            ? await _outlineRepository.GetByIdAsync(
+                suggestion.StoryProjectId, suggestion.TargetEntityId.Value, cancellationToken)
+            : null;
+        outline ??= await _outlineRepository.GetOrCreateDefaultAsync(
+            suggestion.StoryProjectId, cancellationToken);
+
         foreach (var item in chapters)
         {
             var chapter = new Chapter
             {
                 Id = Guid.NewGuid(),
                 StoryProjectId = suggestion.StoryProjectId,
+                StoryOutlineId = outline.Id,
                 Number = item.Number,
                 Title = item.Title,
                 Goal = item.Goal,
@@ -73,7 +87,7 @@ public sealed class OutlineSuggestionApplier : ISuggestionApplier
             await _chapterRepository.SaveAsync(suggestion.StoryProjectId, chapter, cancellationToken);
         }
 
-        return suggestion.Id;
+        return outline.Id;
     }
 
     /// <summary>
@@ -81,7 +95,15 @@ public sealed class OutlineSuggestionApplier : ISuggestionApplier
     /// </summary>
     public async Task RetractAsync(AgentSuggestion suggestion, CancellationToken cancellationToken = default)
     {
-        await _chapterRepository.DeleteBySourceSuggestionIdAsync(suggestion.Id, cancellationToken);
+        if (suggestion.TargetEntityId.HasValue)
+        {
+            await _chapterRepository.DeleteBySourceSuggestionIdAsync(
+                suggestion.Id, suggestion.TargetEntityId.Value, cancellationToken);
+            return;
+        }
+
+        await _chapterRepository.DeleteBySourceSuggestionIdAsync(
+            suggestion.Id, cancellationToken);
     }
 
     private sealed class OutlinePayload

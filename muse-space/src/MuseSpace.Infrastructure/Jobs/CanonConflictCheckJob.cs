@@ -47,9 +47,15 @@ public sealed class CanonConflictCheckJob
         try
         {
             var conflicts = new List<CanonConflict>();
+            var chapter = await _chapterRepo.GetByIdAsync(projectId, chapterId);
+            if (chapter is null)
+            {
+                await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "章节不存在");
+                return;
+            }
 
             // 检查 1：locked UniqueEvent 在本章被重新触发
-            var lockedFacts = await _factRepo.GetLockedAsync(projectId);
+            var lockedFacts = await _factRepo.GetLockedByOutlineAsync(projectId, chapter.StoryOutlineId);
             var lockedUniqueEventTypes = lockedFacts
                 .Where(f => string.Equals(f.FactType, "UniqueEvent", StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -78,7 +84,7 @@ public sealed class CanonConflictCheckJob
             }
 
             // 检查 2：本章 invalidated 了 locked fact（不允许）
-            var allFacts = await _factRepo.GetByProjectAsync(projectId);
+            var allFacts = await _factRepo.GetByOutlineAsync(projectId, chapter.StoryOutlineId);
             var lockedInvalidatedHere = allFacts
                 .Where(f => f.IsLocked && f.InvalidatedByChapterId == chapterId)
                 .ToList();
@@ -95,8 +101,7 @@ public sealed class CanonConflictCheckJob
 
             if (conflicts.Count > 0)
             {
-                var chapter = await _chapterRepo.GetByIdAsync(projectId, chapterId);
-                var chapterLabel = chapter is null ? "未知章节" : $"第 {chapter.Number} 章 {chapter.Title}";
+                var chapterLabel = $"第 {chapter.Number} 章 {chapter.Title}";
 
                 var contentJson = JsonSerializer.Serialize(new
                 {

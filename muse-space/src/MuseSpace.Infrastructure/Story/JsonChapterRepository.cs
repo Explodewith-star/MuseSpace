@@ -16,6 +16,18 @@ public sealed class JsonChapterRepository : JsonRepositoryBase, IChapterReposito
     public Task<List<Chapter>> GetByProjectAsync(Guid projectId, CancellationToken cancellationToken = default)
         => ReadFileAsync<Chapter>(FilePath(projectId), cancellationToken);
 
+    public async Task<List<Chapter>> GetByOutlineAsync(
+        Guid projectId,
+        Guid outlineId,
+        CancellationToken cancellationToken = default)
+    {
+        var all = await GetByProjectAsync(projectId, cancellationToken);
+        return all
+            .Where(c => c.StoryOutlineId == outlineId)
+            .OrderBy(c => c.Number)
+            .ToList();
+    }
+
     public async Task<Chapter?> GetByIdAsync(Guid projectId, Guid chapterId, CancellationToken cancellationToken = default)
     {
         var all = await GetByProjectAsync(projectId, cancellationToken);
@@ -72,6 +84,31 @@ public sealed class JsonChapterRepository : JsonRepositoryBase, IChapterReposito
         return total;
     }
 
+    public async Task<int> DeleteBySourceSuggestionIdAsync(
+        Guid suggestionId,
+        Guid storyOutlineId,
+        CancellationToken cancellationToken = default)
+    {
+        var dir = Path.Combine(_basePath, "projects");
+        if (!Directory.Exists(dir)) return 0;
+        var total = 0;
+        foreach (var projectDir in Directory.GetDirectories(dir))
+        {
+            if (!Guid.TryParse(Path.GetFileName(projectDir), out var projectId)) continue;
+            var path = FilePath(projectId);
+            if (!File.Exists(path)) continue;
+            var all = await ReadFileAsync<Chapter>(path, cancellationToken);
+            var before = all.Count;
+            all.RemoveAll(c => c.SourceSuggestionId == suggestionId && c.StoryOutlineId == storyOutlineId);
+            if (all.Count != before)
+            {
+                await WriteFileAsync(path, all, cancellationToken);
+                total += before - all.Count;
+            }
+        }
+        return total;
+    }
+
     public async Task<int> BatchReorderAsync(
         Guid projectId,
         IReadOnlyList<Guid> orderedChapterIds,
@@ -80,8 +117,26 @@ public sealed class JsonChapterRepository : JsonRepositoryBase, IChapterReposito
     {
         if (orderedChapterIds.Count == 0) return 0;
         var all = await GetByProjectAsync(projectId, cancellationToken);
+        var first = all.FirstOrDefault(c => orderedChapterIds.Contains(c.Id));
+        if (first is null) return 0;
+        return await BatchReorderAsync(projectId, first.StoryOutlineId, orderedChapterIds, startNumber, cancellationToken);
+    }
+
+    public async Task<int> BatchReorderAsync(
+        Guid projectId,
+        Guid storyOutlineId,
+        IReadOnlyList<Guid> orderedChapterIds,
+        int startNumber,
+        CancellationToken cancellationToken = default)
+    {
+        if (orderedChapterIds.Count == 0) return 0;
+        var all = await GetByProjectAsync(projectId, cancellationToken);
         if (all.Count == 0) return 0;
-        var map = all.ToDictionary(c => c.Id);
+        var scoped = all.Where(c => c.StoryOutlineId == storyOutlineId).ToList();
+        var map = scoped.ToDictionary(c => c.Id);
+        var missing = orderedChapterIds.Any(id => !map.ContainsKey(id));
+        if (missing)
+            throw new InvalidOperationException("重排章节必须全部属于同一故事大纲");
         var updated = 0;
         for (var i = 0; i < orderedChapterIds.Count; i++)
         {

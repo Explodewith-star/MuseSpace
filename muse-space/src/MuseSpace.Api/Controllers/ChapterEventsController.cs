@@ -112,6 +112,7 @@ public class ChapterEventsController : ControllerBase
     {
         Id = e.Id,
         StoryProjectId = e.StoryProjectId,
+        StoryOutlineId = e.StoryOutlineId,
         ChapterId = e.ChapterId,
         Order = e.Order,
         EventType = e.EventType,

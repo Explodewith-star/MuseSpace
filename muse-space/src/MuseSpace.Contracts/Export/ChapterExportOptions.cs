@@ -5,6 +5,9 @@ namespace MuseSpace.Contracts.Export;
 /// </summary>
 public sealed class ChapterExportOptions
 {
+    /// <summary>目标故事大纲。为空时导出项目内全部大纲的章节。</summary>
+    public Guid? StoryOutlineId { get; set; }
+
     /// <summary>导出格式。</summary>
     public ChapterExportFormat Format { get; set; } = ChapterExportFormat.Markdown;
 

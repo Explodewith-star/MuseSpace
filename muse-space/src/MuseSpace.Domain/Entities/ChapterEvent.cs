@@ -9,6 +9,7 @@ public class ChapterEvent
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StoryProjectId { get; set; }
+    public Guid StoryOutlineId { get; set; }
     public Guid ChapterId { get; set; }
 
     /// <summary>事件在本章内的顺序（用于稳定排序）。</summary>

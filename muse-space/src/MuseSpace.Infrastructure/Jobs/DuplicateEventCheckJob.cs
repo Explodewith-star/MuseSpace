@@ -49,8 +49,15 @@ public sealed class DuplicateEventCheckJob
                 return;
             }
 
-            // 项目内全部不可逆事件（含本章本身）
-            var irreversibleAll = await _eventRepo.GetIrreversibleAsync(projectId);
+            var chapter = await _chapterRepo.GetByIdAsync(projectId, chapterId);
+            if (chapter is null)
+            {
+                await _progressNotifier.NotifyFailedAsync(projectId, TaskType, "章节不存在");
+                return;
+            }
+
+            // 当前大纲内全部不可逆事件（含本章本身）
+            var irreversibleAll = await _eventRepo.GetIrreversibleByOutlineAsync(projectId, chapter.StoryOutlineId);
             // 排除本章自身的不可逆事件
             var historicalIrreversible = irreversibleAll
                 .Where(e => e.ChapterId != chapterId)
@@ -86,8 +93,7 @@ public sealed class DuplicateEventCheckJob
 
             if (conflicts.Count > 0)
             {
-                var chapter = await _chapterRepo.GetByIdAsync(projectId, chapterId);
-                var chapterLabel = chapter is null ? "未知章节" : $"第 {chapter.Number} 章 {chapter.Title}";
+                var chapterLabel = $"第 {chapter.Number} 章 {chapter.Title}";
 
                 var contentJson = JsonSerializer.Serialize(new
                 {

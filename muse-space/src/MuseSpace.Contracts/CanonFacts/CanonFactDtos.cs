@@ -4,6 +4,7 @@ public sealed class CanonFactResponse
 {
     public Guid Id { get; set; }
     public Guid StoryProjectId { get; set; }
+    public Guid StoryOutlineId { get; set; }
     public string FactType { get; set; } = string.Empty;
     public Guid? SubjectId { get; set; }
     public Guid? ObjectId { get; set; }
@@ -20,6 +21,7 @@ public sealed class CanonFactResponse
 
 public sealed class UpsertCanonFactRequest
 {
+    public Guid? StoryOutlineId { get; set; }
     public string FactType { get; set; } = string.Empty;
     public Guid? SubjectId { get; set; }
     public Guid? ObjectId { get; set; }

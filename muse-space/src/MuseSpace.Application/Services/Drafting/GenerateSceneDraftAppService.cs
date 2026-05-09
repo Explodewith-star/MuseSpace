@@ -46,6 +46,7 @@ public sealed class GenerateSceneDraftAppService
                 ["SceneGoal"] = request.SceneGoal,
                 ["Conflict"] = request.Conflict ?? string.Empty,
                 ["EmotionCurve"] = request.EmotionCurve ?? string.Empty,
+                ["IncludeNovelContext"] = request.IncludeNovelContext.ToString(),
                 ["ReferenceText"] = request.ReferenceText?.Trim() ?? string.Empty,
                 ["ReferenceFocus"] = request.ReferenceFocus?.Trim() ?? string.Empty,
                 ["ReferenceStrength"] = request.ReferenceStrength?.Trim() ?? string.Empty

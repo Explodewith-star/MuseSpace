@@ -5,9 +5,11 @@ namespace MuseSpace.Application.Abstractions.Repositories;
 public interface IChapterEventRepository
 {
     Task<List<ChapterEvent>> GetByProjectAsync(Guid projectId, CancellationToken ct = default);
+    Task<List<ChapterEvent>> GetByOutlineAsync(Guid projectId, Guid storyOutlineId, CancellationToken ct = default);
     Task<List<ChapterEvent>> GetByChapterAsync(Guid projectId, Guid chapterId, CancellationToken ct = default);
     Task<List<ChapterEvent>> GetRecentAsync(Guid projectId, int chapterCount, CancellationToken ct = default);
     Task<List<ChapterEvent>> GetIrreversibleAsync(Guid projectId, CancellationToken ct = default);
+    Task<List<ChapterEvent>> GetIrreversibleByOutlineAsync(Guid projectId, Guid storyOutlineId, CancellationToken ct = default);
     Task<ChapterEvent?> GetByIdAsync(Guid projectId, Guid id, CancellationToken ct = default);
     Task<ChapterEvent> AddAsync(ChapterEvent ev, CancellationToken ct = default);
     Task UpdateAsync(ChapterEvent ev, CancellationToken ct = default);

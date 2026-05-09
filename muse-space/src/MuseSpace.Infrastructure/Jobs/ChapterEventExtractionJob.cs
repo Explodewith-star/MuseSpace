@@ -124,6 +124,7 @@ public sealed class ChapterEventExtractionJob
                 .Select((e, idx) => new ChapterEvent
                 {
                     StoryProjectId = projectId,
+                    StoryOutlineId = chapter.StoryOutlineId,
                     ChapterId = chapterId,
                     Order = e.Order > 0 ? e.Order : idx + 1,
                     EventType = e.EventType!.Trim(),

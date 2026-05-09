@@ -54,4 +54,7 @@ public class StoryContext
     /// 格式："【角色名】状态描述"，★ 标注不可逆。
     /// </summary>
     public List<string> NovelCharacterEndStates { get; init; } = [];
+
+    /// <summary>当前章节所属大纲摘要，用于追溯生成边界。</summary>
+    public string? OutlineSummary { get; init; }
 }

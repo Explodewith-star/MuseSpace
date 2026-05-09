@@ -6,6 +6,9 @@ namespace MuseSpace.Contracts.Chapters;
 /// </summary>
 public sealed class BatchReorderChaptersRequest
 {
+    /// <summary>目标故事大纲。用于确认本次重排只作用于同一条大纲。</summary>
+    public Guid? StoryOutlineId { get; set; }
+
     public List<Guid> ChapterIds { get; set; } = [];
 
     /// <summary>

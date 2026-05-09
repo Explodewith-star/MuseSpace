@@ -40,6 +40,17 @@ public sealed class EfChapterBatchDraftRunRepository : IChapterBatchDraftRunRepo
             ct);
     }
 
+    public Task<bool> HasActiveAsync(Guid projectId, Guid storyOutlineId, CancellationToken ct = default)
+    {
+        var expiryCutoff = DateTime.UtcNow - StaleRunThreshold;
+        return _db.ChapterBatchDraftRuns.AnyAsync(r =>
+            r.StoryProjectId == projectId &&
+            r.StoryOutlineId == storyOutlineId &&
+            (r.Status == ChapterBatchDraftStatus.Pending || r.Status == ChapterBatchDraftStatus.Running) &&
+            r.CreatedAt >= expiryCutoff,
+            ct);
+    }
+
     public async Task MarkStaleRunsAsFailedAsync(Guid projectId, CancellationToken ct = default)
     {
         var expiryCutoff = DateTime.UtcNow - StaleRunThreshold;
@@ -62,6 +73,14 @@ public sealed class EfChapterBatchDraftRunRepository : IChapterBatchDraftRunRepo
         Guid projectId, int take = 10, CancellationToken ct = default)
         => await _db.ChapterBatchDraftRuns.AsNoTracking()
             .Where(r => r.StoryProjectId == projectId)
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task<List<ChapterBatchDraftRun>> ListRecentAsync(
+        Guid projectId, Guid storyOutlineId, int take = 10, CancellationToken ct = default)
+        => await _db.ChapterBatchDraftRuns.AsNoTracking()
+            .Where(r => r.StoryProjectId == projectId && r.StoryOutlineId == storyOutlineId)
             .OrderByDescending(r => r.CreatedAt)
             .Take(take)
             .ToListAsync(ct);

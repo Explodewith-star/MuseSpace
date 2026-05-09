@@ -44,9 +44,14 @@ public sealed class SceneDraftSkill : ISkill
             {
                 StoryProjectId = request.StoryProjectId,
                 ChapterId = TryParseGuid(request.Parameters.GetValueOrDefault("ChapterId")),
+                OutlineId = TryParseGuid(request.Parameters.GetValueOrDefault("OutlineId")),
+                InvolvedCharacterIds = ParseGuidList(request.Parameters.GetValueOrDefault("InvolvedCharacterIds")),
                 SceneGoal = request.Parameters.GetValueOrDefault("SceneGoal", string.Empty),
                 Conflict = request.Parameters.GetValueOrDefault("Conflict"),
                 EmotionCurve = request.Parameters.GetValueOrDefault("EmotionCurve"),
+                IncludeNovelContext = bool.TryParse(
+                    request.Parameters.GetValueOrDefault("IncludeNovelContext"), out var includeNovelContext)
+                    && includeNovelContext,
                 // Module E
                 GenerationMode = Enum.TryParse<Domain.Enums.GenerationMode>(
                     request.Parameters.GetValueOrDefault("GenerationMode"), out var gm)
@@ -72,6 +77,7 @@ public sealed class SceneDraftSkill : ISkill
             var variables = new Dictionary<string, string>
             {
                 ["project_summary"] = storyContext.ProjectSummary ?? string.Empty,
+                ["outline_summary"] = storyContext.OutlineSummary ?? string.Empty,
                 ["recent_summaries"] = string.Join("\n", storyContext.RecentChapterSummaries),
                 ["character_cards"] = string.Join("\n", storyContext.InvolvedCharacterCards),
                 ["world_rules"] = string.Join("\n", storyContext.WorldRules),
@@ -122,6 +128,10 @@ public sealed class SceneDraftSkill : ISkill
 
             stopwatch.Stop();
 
+            var renderedPrompt =
+                "===== SYSTEM =====\n" + systemPrompt +
+                "\n\n===== USER =====\n" + userPrompt;
+
             return new SkillResult
             {
                 Success = true,
@@ -130,7 +140,8 @@ public sealed class SceneDraftSkill : ISkill
                 PromptVersion = template.Version,
                 DurationMs = stopwatch.ElapsedMilliseconds,
                 InputTokens = llmResult.InputTokens,
-                OutputTokens = llmResult.OutputTokens
+                OutputTokens = llmResult.OutputTokens,
+                RenderedPrompt = renderedPrompt,
             };
         }
         catch (Exception ex)
@@ -194,6 +205,18 @@ public sealed class SceneDraftSkill : ISkill
 
     private static Guid? TryParseGuid(string? raw)
         => Guid.TryParse(raw, out var g) ? g : null;
+
+    private static List<Guid>? ParseGuidList(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var ids = raw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(item => Guid.TryParse(item, out var id) ? id : Guid.Empty)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+        return ids.Count > 0 ? ids : null;
+    }
 
     private static string BuildBranchContextSection(string? branchTopic, List<string> snippets)
     {

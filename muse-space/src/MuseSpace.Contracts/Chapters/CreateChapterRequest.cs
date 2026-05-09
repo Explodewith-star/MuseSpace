@@ -3,6 +3,7 @@ namespace MuseSpace.Contracts.Chapters;
 public sealed class CreateChapterRequest
 {
     public int Number { get; init; }
+    public Guid? StoryOutlineId { get; init; }
     public string? Title { get; init; }
     public string? Summary { get; init; }
     public string? Goal { get; init; }
@@ -10,4 +11,5 @@ public sealed class CreateChapterRequest
     public string? EmotionCurve { get; init; }
     public List<Guid>? KeyCharacterIds { get; init; }
     public List<string>? MustIncludePoints { get; init; }
+    public int? AllowedRevealLevel { get; init; }
 }

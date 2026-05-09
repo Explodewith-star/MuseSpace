@@ -4,6 +4,7 @@ public sealed class ChapterEventResponse
 {
     public Guid Id { get; set; }
     public Guid StoryProjectId { get; set; }
+    public Guid StoryOutlineId { get; set; }
     public Guid ChapterId { get; set; }
     public int Order { get; set; }
     public string EventType { get; set; } = string.Empty;

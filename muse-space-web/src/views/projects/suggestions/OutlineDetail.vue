@@ -6,6 +6,7 @@ import AppBadge from '@/components/base/AppBadge.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AppModal from '@/components/base/AppModal.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
+import { getStoryOutlines } from '@/api/outlines'
 import {
   getSuggestionById,
   importOutline,
@@ -18,6 +19,7 @@ import type {
   AgentSuggestionResponse,
   OutlineChapterItem,
   OutlineVolumeItem,
+  StoryOutlineResponse,
 } from '@/types/models'
 import { useToast } from '@/composables/useToast'
 import { useAgentProgress } from '@/composables/useAgentProgress'
@@ -37,11 +39,21 @@ const suggestion = ref<AgentSuggestionResponse | null>(null)
 const loading = ref(true)
 const volumes = ref<OutlineVolumeItem[]>([])
 const activeVolumeIndex = ref(0)
+const outlines = ref<StoryOutlineResponse[]>([])
+const selectedOutlineId = ref('')
+const selectedOutline = computed(() =>
+  outlines.value.find((o) => o.id === selectedOutlineId.value) ?? null,
+)
 
 async function loadSuggestion() {
   loading.value = true
   try {
     suggestion.value = await getSuggestionById(projectId, suggestionId)
+    outlines.value = await getStoryOutlines(projectId).catch(() => [])
+    selectedOutlineId.value = suggestion.value.targetEntityId
+      ?? outlines.value.find((o) => o.isDefault)?.id
+      ?? outlines.value[0]?.id
+      ?? ''
     volumes.value = parseOutlineVolumes(suggestion.value.contentJson).map((v) => ({
       ...v,
       chapters: (v.chapters ?? []).map((c) => ({ ...c })),
@@ -168,6 +180,7 @@ async function submitImport() {
   try {
     const flatChapters = volumes.value.flatMap((v) => v.chapters)
     const count = await importOutline(projectId, {
+      storyOutlineId: selectedOutlineId.value || undefined,
       chapters: flatChapters.map((ch) => ({
         number: ch.number,
         title: ch.title,
@@ -216,6 +229,11 @@ onUnmounted(() => {
         </template>
       </div>
       <div class="header-actions">
+        <select v-if="outlines.length" v-model="selectedOutlineId" class="outline-select">
+          <option v-for="outline in outlines" :key="outline.id" :value="outline.id">
+            {{ outline.name }}
+          </option>
+        </select>
         <!-- 始终可以重排编号 -->
         <AppButton variant="ghost" size="sm" @click="reorderAll">
           <i class="i-lucide-list-ordered" />
@@ -377,7 +395,7 @@ onUnmounted(() => {
     <!-- 底部固定操作栏 -->
     <div v-if="!loading && totalChapters" class="bottom-bar">
       <span class="bottom-hint">
-        <template v-if="canOperate">共 {{ volumes.length }} 卷 / {{ totalChapters }} 章，可在上方直接编辑后导入</template>
+        <template v-if="canOperate">共 {{ volumes.length }} 卷 / {{ totalChapters }} 章，将导入到「{{ selectedOutline?.name ?? '默认大纲' }}」</template>
         <template v-else>共 {{ volumes.length }} 卷 / {{ totalChapters }} 章 · 已应用/忽略状态，修改只更新大纲记录</template>
       </span>
       <AppButton v-if="canOperate" :loading="importing" @click="submitImport">
@@ -448,6 +466,17 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.outline-select {
+  height: 32px;
+  min-width: 160px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font-size: 13px;
 }
 
 .resolved-hint {

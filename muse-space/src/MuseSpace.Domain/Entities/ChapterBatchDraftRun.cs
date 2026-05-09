@@ -8,6 +8,7 @@ public class ChapterBatchDraftRun
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StoryProjectId { get; set; }
+    public Guid StoryOutlineId { get; set; }
     public Guid? UserId { get; set; }
 
     /// <summary>起始章节号（含）。</summary>

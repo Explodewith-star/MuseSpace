@@ -3,6 +3,9 @@ namespace MuseSpace.Contracts.Suggestions;
 /// <summary>用户审核编辑后的大纲导入请求。</summary>
 public sealed class ImportOutlineRequest
 {
+    /// <summary>目标故事大纲。为空时导入默认大纲。</summary>
+    public Guid? StoryOutlineId { get; init; }
+
     /// <summary>要导入的章节列表（用户可能已编辑、删除或调整编号）。</summary>
     public List<ImportOutlineChapter> Chapters { get; init; } = [];
 }

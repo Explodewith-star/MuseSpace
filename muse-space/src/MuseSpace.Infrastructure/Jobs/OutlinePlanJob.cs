@@ -24,6 +24,7 @@ public sealed class OutlinePlanJob
 {
     private readonly IAgentRunner _agentRunner;
     private readonly IChapterRepository _chapterRepo;
+    private readonly IStoryOutlineRepository _outlineRepo;
     private readonly ICharacterRepository _characterRepo;
     private readonly IWorldRuleRepository _worldRuleRepo;
     private readonly AgentSuggestionAppService _suggestionService;
@@ -36,6 +37,7 @@ public sealed class OutlinePlanJob
     public OutlinePlanJob(
         IAgentRunner agentRunner,
         IChapterRepository chapterRepo,
+        IStoryOutlineRepository outlineRepo,
         ICharacterRepository characterRepo,
         IWorldRuleRepository worldRuleRepo,
         AgentSuggestionAppService suggestionService,
@@ -47,6 +49,7 @@ public sealed class OutlinePlanJob
     {
         _agentRunner = agentRunner;
         _chapterRepo = chapterRepo;
+        _outlineRepo = outlineRepo;
         _characterRepo = characterRepo;
         _worldRuleRepo = worldRuleRepo;
         _suggestionService = suggestionService;
@@ -65,7 +68,13 @@ public sealed class OutlinePlanJob
     /// <param name="chapterCount">期望生成的章节数量。</param>
     /// <param name="mode">"new" = 全新规划，"continue" = 续写扩展。</param>
     /// <param name="userId">触发用户 ID。</param>
-    public async Task ExecuteAsync(Guid projectId, string goal, int chapterCount, string mode, Guid? userId)
+    public async Task ExecuteAsync(
+        Guid projectId,
+        string goal,
+        int chapterCount,
+        string mode,
+        Guid? userId,
+        Guid? storyOutlineId = null)
     {
         const string taskType = "outline";
 
@@ -90,9 +99,20 @@ public sealed class OutlinePlanJob
         try
         {
             // 1. 收集项目上下文
+            var outline = storyOutlineId.HasValue
+                ? await _outlineRepo.GetByIdAsync(projectId, storyOutlineId.Value)
+                : null;
+            outline ??= await _outlineRepo.GetOrCreateDefaultAsync(projectId);
+            var effectiveMode = OutlineModeToPlanMode(outline.Mode, mode);
+
+            outline.TargetChapterCount = chapterCount;
+            outline.OutlineSummary = goal.Trim();
+            outline.UpdatedAt = DateTime.UtcNow;
+            await _outlineRepo.SaveAsync(projectId, outline);
+
             var characters = await _characterRepo.GetByProjectAsync(projectId);
             var worldRules = await _worldRuleRepo.GetByProjectAsync(projectId);
-            var existingChapters = await _chapterRepo.GetByProjectAsync(projectId);
+            var existingChapters = await _chapterRepo.GetByOutlineAsync(projectId, outline.Id);
             var orderedChapters = existingChapters.OrderBy(c => c.Number).ToList();
 
             // 2. 组装上下文文本
@@ -115,7 +135,7 @@ public sealed class OutlinePlanJob
 
             // 续写模式：将已有章节作为上下文
             int startNumber = 1;
-            if ((mode == "continue" || mode == "extra") && orderedChapters.Count > 0)
+            if ((effectiveMode == "continue" || effectiveMode == "extra") && orderedChapters.Count > 0)
             {
                 startNumber = orderedChapters.Max(c => c.Number) + 1;
                 var chaptersText = string.Join("\n", orderedChapters.Select(c =>
@@ -133,6 +153,12 @@ public sealed class OutlinePlanJob
                 "continue" => $"请接续已有的 {orderedChapters.Count} 章内容，从第 {startNumber} 章开始续写规划。",
                 "extra" => $"请基于已有项目设定，规划一段【番外】支线，从第 {startNumber} 章开始；可独立成卷，主题应区别于主线。",
                 _ => "请从第 1 章开始进行全新规划。",
+            };
+            modeDescription = effectiveMode switch
+            {
+                "continue" => $"请在大纲《{outline.Name}》内接续已有的 {orderedChapters.Count} 章内容，从第 {startNumber} 章开始续写规划。",
+                "extra" => $"请在大纲《{outline.Name}》内规划一段【番外/支线】，从第 {startNumber} 章开始；主题应围绕该大纲，不要混入其它大纲章节。",
+                _ => $"请在大纲《{outline.Name}》内从第 1 章开始进行全新规划。",
             };
 
             var userPrompt = $"""
@@ -204,7 +230,7 @@ public sealed class OutlinePlanJob
             }
 
             // 6. 修正章节编号（跨卷连续递增；续写/番外模式从 startNumber 开始）
-            var nextNumber = (mode == "continue" || mode == "extra") ? startNumber : 1;
+            var nextNumber = (effectiveMode == "continue" || effectiveMode == "extra") ? startNumber : 1;
             var totalChapters = 0;
             for (var vi = 0; vi < volumes.Count; vi++)
             {
@@ -231,13 +257,20 @@ public sealed class OutlinePlanJob
                 "extra" => "番外",
                 _ => "全新",
             };
+            modeLabelDisplay = effectiveMode switch
+            {
+                "continue" => "续写",
+                "extra" => "番外",
+                _ => "全新",
+            };
 
             await _suggestionService.CreateAsync(
                 agentRunId: agentContext.RunId,
                 storyProjectId: projectId,
                 category: SuggestionCategories.Outline,
-                title: $"大纲草案（{modeLabelDisplay}·{totalChapters}章·{timestamp}）",
-                contentJson: contentJson);
+                title: $"大纲草案（{outline.Name}·{modeLabelDisplay}·{totalChapters}章·{timestamp}）",
+                contentJson: contentJson,
+                targetEntityId: outline.Id);
 
             _logger.LogInformation("[OutlinePlan] Saved outline with {Count} chapters for project {ProjectId}",
                 totalChapters, projectId);
@@ -273,6 +306,15 @@ public sealed class OutlinePlanJob
     {
         public List<OutlineVolumeItem> Volumes { get; set; } = [];
     }
+
+    private static string OutlineModeToPlanMode(GenerationMode outlineMode, string fallback)
+        => outlineMode switch
+        {
+            GenerationMode.ContinueFromOriginal => "continue",
+            GenerationMode.SideStoryFromOriginal => "extra",
+            GenerationMode.ExpandOrRewrite => "continue",
+            _ => fallback is "continue" or "extra" ? fallback : "new",
+        };
 
     private sealed class OutlineVolumeItem
     {

@@ -190,7 +190,7 @@ public class AgentSuggestionsController : ControllerBase
         var mode = request.Mode is "new" or "continue" or "extra" ? request.Mode : "new";
 
         _backgroundJobs.Enqueue<OutlinePlanJob>(
-            job => job.ExecuteAsync(projectId, request.Goal, request.ChapterCount, mode, CurrentUserId));
+            job => job.ExecuteAsync(projectId, request.Goal, request.ChapterCount, mode, CurrentUserId, request.StoryOutlineId));
 
         return Ok(ApiResponse<string>.Ok("大纲规划已提交，结果将异步写入建议列表"));
     }
@@ -225,6 +225,7 @@ public class AgentSuggestionsController : ControllerBase
         {
             await _chapterService.CreateAsync(projectId, new CreateChapterRequest
             {
+                StoryOutlineId = request.StoryOutlineId,
                 Number = ch.Number,
                 Title = ch.Title,
                 Summary = ch.Summary,
