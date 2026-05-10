@@ -18,6 +18,7 @@ import { getCharacters } from '@/api/characters'
 import { getWorldRules } from '@/api/worldRules'
 import { exportProjectChapters, type ExportFormat } from '@/api/export'
 import {
+  batchAdoptDrafts,
   batchGenerateDrafts,
   cancelChapterBatchRun,
   getChapterBatchRun,
@@ -211,12 +212,53 @@ const exportForm = reactive({
 })
 
 const finalChapterCount = computed(() => chapters.value.filter((c) => c.status === 3).length)
+const draftChapterCount = computed(
+  () => chapters.value.filter((c) => (c.draftText ?? '').trim().length > 0).length,
+)
+const pendingFinalizeCount = computed(
+  () =>
+    chapters.value.filter((c) => c.status !== 3 && (c.draftText ?? '').trim().length > 0).length,
+)
+
+const finalizeConfirmOpen = ref(false)
+const finalizeLoading = ref(false)
+
+function openFinalizeConfirm() {
+  if (pendingFinalizeCount.value <= 0) {
+    toast.info('当前没有可一键定稿的章节（需有草稿且未定稿）')
+    return
+  }
+  finalizeConfirmOpen.value = true
+}
+
+async function confirmBatchFinalize() {
+  finalizeLoading.value = true
+  try {
+    const result = await batchAdoptDrafts(projectId, {
+      storyOutlineId: selectedOutlineId.value || undefined,
+      overrideExisting: false,
+    })
+    finalizeConfirmOpen.value = false
+    const message =
+      `本次已定稿 ${result.adoptedCount} 章` +
+      (result.skippedNoDraftCount > 0 ? `，无草稿跳过 ${result.skippedNoDraftCount} 章` : '') +
+      (result.skippedExistingFinalCount > 0
+        ? `，已有定稿跳过 ${result.skippedExistingFinalCount} 章`
+        : '')
+    toast.success(message)
+    await loadChapters()
+  } catch {
+    // handled by interceptor
+  } finally {
+    finalizeLoading.value = false
+  }
+}
 
 function openExportModal() {
   exportForm.format = 'md'
   exportForm.rangeMode = 'all'
-  exportForm.onlyFinal = true
-  exportForm.includeDraft = false
+  exportForm.onlyFinal = finalChapterCount.value > 0
+  exportForm.includeDraft = finalChapterCount.value === 0 && draftChapterCount.value > 0
   if (chapters.value.length > 0) {
     exportForm.fromNumber = chapters.value[0].number
     exportForm.toNumber = chapters.value[chapters.value.length - 1].number
@@ -472,6 +514,21 @@ watch(outlineStage, (e) => {
           v-if="chapters.length > 0"
           variant="ghost"
           size="sm"
+          :disabled="pendingFinalizeCount <= 0"
+          :title="
+            pendingFinalizeCount > 0
+              ? `将当前大纲内 ${pendingFinalizeCount} 章草稿一键采用为定稿`
+              : '当前没有可一键定稿章节'
+          "
+          @click="openFinalizeConfirm"
+        >
+          <i class="i-lucide-check-check" />
+          一键定稿
+        </AppButton>
+        <AppButton
+          v-if="chapters.length > 0"
+          variant="ghost"
+          size="sm"
           :disabled="isBatchRunning"
           :title="isBatchRunning ? '当前已有进行中的批量任务' : '一次最多生成 10 章草稿'"
           @click="openBatchModal"
@@ -686,6 +743,15 @@ watch(outlineStage, (e) => {
       @confirm="confirmDelete"
     />
 
+    <AppConfirm
+      v-model="finalizeConfirmOpen"
+      title="一键定稿"
+      :message="`将当前大纲中 ${pendingFinalizeCount} 章已有草稿的章节采用为定稿。此操作不会调用 AI，也不会覆盖已有定稿。`"
+      confirm-text="采用草稿"
+      :loading="finalizeLoading"
+      @confirm="confirmBatchFinalize"
+    />
+
     <!-- AI 大纲规划弹窗 -->
     <AppModal v-model="planModalOpen" title="AI 规划大纲" width="560px">
       <div class="plan-form">
@@ -818,7 +884,8 @@ watch(outlineStage, (e) => {
         <p class="export-tip">
           <i class="i-lucide-info" />
           当前共 <strong>{{ chapters.length }}</strong> 章，已定稿
-          <strong>{{ finalChapterCount }}</strong> 章。
+          <strong>{{ finalChapterCount }}</strong> 章，有草稿
+          <strong>{{ draftChapterCount }}</strong> 章。
         </p>
       </div>
       <template #footer>

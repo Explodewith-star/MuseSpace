@@ -229,6 +229,7 @@ public sealed class ChapterDraftJob
                 ["SceneGoal"] = sceneGoal,
                 ["Conflict"] = string.Join("\n\n", conflictParts),
                 ["EmotionCurve"] = chapter.EmotionCurve ?? string.Empty,
+                ["ChapterPlanContract"] = BuildChapterPlanContract(scope),
                 ["ChapterId"] = chapterId.ToString(),
                 ["OutlineId"] = scope.OutlineId.ToString(),
                 ["InvolvedCharacterIds"] = chapter.KeyCharacterIds is { Count: > 0 }
@@ -250,6 +251,30 @@ public sealed class ChapterDraftJob
         };
 
         return _orchestrator.ExecuteAsync(request);
+    }
+
+    private static string BuildChapterPlanContract(ChapterDraftScope scope)
+    {
+        var parts = new List<string>
+        {
+            $"当前章节：第 {scope.ChapterNumber} 章",
+            $"允许揭示等级：{scope.AllowedRevealLevel}",
+        };
+
+        if (!string.IsNullOrWhiteSpace(scope.CurrentPlanText))
+            parts.Add("当前章节计划：\n" + scope.CurrentPlanText);
+
+        if (!string.IsNullOrWhiteSpace(scope.BoundaryInstruction))
+            parts.Add("硬边界：\n" + scope.BoundaryInstruction);
+
+        if (scope.ReservedFutureBeats.Count > 0)
+        {
+            parts.Add(
+                "后续章节保留项（只用于禁止提前展开，不是创作素材）：\n" +
+                string.Join("\n", scope.ReservedFutureBeats.Select(item => "- " + item)));
+        }
+
+        return string.Join("\n\n", parts);
     }
 
     private static bool ShouldIncludeNovelContext(

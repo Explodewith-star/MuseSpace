@@ -154,4 +154,21 @@ public class ChaptersController : ControllerBase
 
         return Ok(ApiResponse<AdoptDraftResponse>.Ok(response!));
     }
+
+    /// <summary>
+    /// 批量将草稿采用为定稿。默认不覆盖已有定稿（仅处理 DraftText 非空且 FinalText 为空的章节）。
+    /// </summary>
+    [HttpPost("batch-adopt-draft")]
+    public async Task<ActionResult<ApiResponse<BatchAdoptDraftsResponse>>> BatchAdoptDraft(
+        Guid projectId,
+        [FromBody] BatchAdoptDraftsRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _service.BatchAdoptDraftsAsync(
+            projectId,
+            request?.StoryOutlineId,
+            request?.OverrideExisting ?? false,
+            cancellationToken);
+        return Ok(ApiResponse<BatchAdoptDraftsResponse>.Ok(result));
+    }
 }

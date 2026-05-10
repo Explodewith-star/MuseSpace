@@ -9,8 +9,9 @@ public static partial class ChapterDraftScopeBuilder
 {
     private static readonly string[] LocationMarkers =
     [
-        "宿舍", "教室", "走廊", "操场", "校园", "学校", "办公室", "地下室", "地窖",
-        "工厂", "实验室", "医院", "村", "城市", "门后", "鬼域", "异空间", "房间"
+        "宿舍", "教室", "走廊", "操场", "体育馆", "篮球场", "球场", "休息区", "入口",
+        "校园", "学校", "办公室", "地下室", "地窖", "工厂", "实验室", "医院", "村",
+        "城市", "门后", "鬼域", "异空间", "房间"
     ];
 
     public static ChapterDraftScope Build(
@@ -104,6 +105,7 @@ public static partial class ChapterDraftScopeBuilder
         {
             $"大纲模式：{outline.Mode}；本章揭示等级：{revealLevel}。",
             "只写当前章节计划中的事件、地点、人物行动和信息量；未在当前章节计划出现的未来事件只能保留，不得当作本章剧情展开。",
+            "不得新增当前计划没有要求的实体、附身、追逐、战斗、死亡、血腥线索、空间切换、规则解释或强制抉择。",
         };
 
         lines.Add(revealLevel switch

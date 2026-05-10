@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Domain.Entities;
+using MuseSpace.Domain.Enums;
 
 namespace MuseSpace.Infrastructure.Story;
 
@@ -151,5 +152,50 @@ public sealed class JsonChapterRepository : JsonRepositoryBase, IChapterReposito
         if (updated > 0)
             await WriteFileAsync(FilePath(projectId), all, cancellationToken);
         return updated;
+    }
+
+    public async Task<(int RequestedCount, int AdoptedCount, int SkippedNoDraftCount, int SkippedExistingFinalCount)> BatchAdoptDraftAsync(
+        Guid projectId,
+        IReadOnlyCollection<Guid> chapterIds,
+        bool overrideExisting,
+        CancellationToken cancellationToken = default)
+    {
+        if (chapterIds.Count == 0) return (0, 0, 0, 0);
+
+        var ids = chapterIds.ToHashSet();
+        var all = await GetByProjectAsync(projectId, cancellationToken);
+        var scoped = all.Where(c => ids.Contains(c.Id)).ToList();
+        var skippedNoDraft = 0;
+        var skippedExistingFinal = 0;
+        var adopted = 0;
+
+        foreach (var chapter in scoped)
+        {
+            if (string.IsNullOrWhiteSpace(chapter.DraftText))
+            {
+                skippedNoDraft++;
+                continue;
+            }
+
+            if (!overrideExisting && !string.IsNullOrWhiteSpace(chapter.FinalText))
+            {
+                skippedExistingFinal++;
+                continue;
+            }
+
+            chapter.FinalText = chapter.DraftText;
+            if (chapter.Status < ChapterStatus.Finalized)
+            {
+                chapter.Status = ChapterStatus.Finalized;
+            }
+            adopted++;
+        }
+
+        if (adopted > 0)
+        {
+            await WriteFileAsync(FilePath(projectId), all, cancellationToken);
+        }
+
+        return (scoped.Count, adopted, skippedNoDraft, skippedExistingFinal);
     }
 }

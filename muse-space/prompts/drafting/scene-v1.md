@@ -11,13 +11,27 @@ Rules:
 - Follow the specified style requirements
 - Write in the narrative perspective provided
 - Do not contradict established facts from previous chapters
-- Write ONLY the current chapter described in Scene Goal. Do not write previous chapters, later chapters, recaps, previews, or plot beats from other chapter outlines.
+- Treat the Current Chapter Contract as the highest-priority plot authority. It is a hard boundary, not inspiration.
+- Write ONLY the current chapter described in the Current Chapter Contract and Scene Goal. Do not write previous chapters, later chapters, recaps, previews, or plot beats from other chapter outlines.
 - The Conflict section may include chapter boundary constraints and future reserved beats. These constraints are mandatory, not inspiration.
+- Background context, original-novel material, outline summaries, timelines, and reference text are continuity constraints only. They must never introduce events that are absent from the Current Chapter Contract.
 - Treat any original-novel/reference material as background only. Never copy, paraphrase, rewrite, continue, or transplant its concrete scenes, sentences, or plot sequence unless the current Scene Goal explicitly asks for that exact event.
 
 ## instruction
 
 Write a scene draft based on the following information.
+
+## 当前章节契约（最高优先级，硬边界）
+以下内容定义本章唯一允许发生的剧情范围。正文中每个具体事件、地点推进、异常表现、人物行动和信息揭示，都必须能回指到这里的章节计划或硬边界。
+
+{{chapter_plan_contract}}
+
+禁止事项：
+- 不要把后续章节保留项、大纲摘要、原著片段、世界观背景或参考文本里的具体桥段提前写进本章。
+- 如果当前章节计划只写“前兆 / 错觉 / 异响 / 阴影 / 警觉”，不得升级为实体登场、鬼怪确认、附身、追逐、战斗、死亡、规则解释、空间切换或终局真相。
+- 不要为了制造戏剧性而新增未计划的实体、地点、能力机制、血腥痕迹、倒计时、生存规则或强制抉择。
+
+## 辅助上下文（只能保证连续性，不得覆盖章节契约）
 
 **Project Summary:**
 {{project_summary}}
@@ -89,9 +103,9 @@ Reference strength: {{reference_strength}}
 
 ## context
 
-Use the above information as your creative context. Focus on the scene goal and ensure the conflict is reflected in the narrative. The emotion curve should guide the pacing.
+Use the above information as creative context, but keep the Current Chapter Contract as the hard plot boundary. Focus on the scene goal and ensure the conflict is reflected in the narrative. The emotion curve should guide the pacing.
 
-The Scene Goal is the source of truth for what happens in this output. Recent summaries, timelines, immutable facts, and original references are constraints only; they must not override the current chapter's number, title, goal, summary, conflict, or must-hit points.
+The Current Chapter Contract and Scene Goal are the source of truth for what happens in this output. Recent summaries, timelines, immutable facts, outline summaries, and original references are constraints only; they must not override the current chapter's number, title, goal, summary, conflict, must-hit points, or reveal level.
 
 If a future event, location, monster/ghost entity, death, fight, pursuit, rule explanation, or dimensional transition is not explicitly required by the current Scene Goal or must-hit points, keep it out of this chapter. You may foreshadow it only through ambiguous sensory details.
 

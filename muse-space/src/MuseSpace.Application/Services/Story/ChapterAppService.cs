@@ -164,4 +164,34 @@ public sealed class ChapterAppService
             },
             null);
     }
+
+    /// <summary>
+    /// 批量将草稿采用为定稿。默认不覆盖已有定稿。
+    /// </summary>
+    public async Task<BatchAdoptDraftsResponse> BatchAdoptDraftsAsync(
+        Guid projectId,
+        Guid? storyOutlineId,
+        bool overrideExisting,
+        CancellationToken cancellationToken = default)
+    {
+        var chapters = storyOutlineId.HasValue
+            ? await _repository.GetByOutlineAsync(projectId, storyOutlineId.Value, cancellationToken)
+            : await _repository.GetByProjectAsync(projectId, cancellationToken);
+
+        var chapterIds = chapters.Select(c => c.Id).ToList();
+        var (requested, adopted, skippedNoDraft, skippedExistingFinal) =
+            await _repository.BatchAdoptDraftAsync(
+                projectId,
+                chapterIds,
+                overrideExisting,
+                cancellationToken);
+
+        return new BatchAdoptDraftsResponse
+        {
+            RequestedCount = requested,
+            AdoptedCount = adopted,
+            SkippedNoDraftCount = skippedNoDraft,
+            SkippedExistingFinalCount = skippedExistingFinal,
+        };
+    }
 }

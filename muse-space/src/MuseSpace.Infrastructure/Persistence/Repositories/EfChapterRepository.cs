@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using MuseSpace.Application.Abstractions.Repositories;
 using MuseSpace.Domain.Entities;
+using MuseSpace.Domain.Enums;
 
 namespace MuseSpace.Infrastructure.Persistence.Repositories;
 
@@ -147,6 +148,53 @@ public sealed class EfChapterRepository : IChapterRepository
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return updated;
+    }
+
+    public async Task<(int RequestedCount, int AdoptedCount, int SkippedNoDraftCount, int SkippedExistingFinalCount)> BatchAdoptDraftAsync(
+        Guid projectId,
+        IReadOnlyCollection<Guid> chapterIds,
+        bool overrideExisting,
+        CancellationToken cancellationToken = default)
+    {
+        if (chapterIds.Count == 0) return (0, 0, 0, 0);
+
+        var idSet = chapterIds.ToHashSet();
+        var chapters = await _db.Chapters
+            .Where(c => c.StoryProjectId == projectId && idSet.Contains(c.Id))
+            .ToListAsync(cancellationToken);
+
+        var skippedNoDraft = 0;
+        var skippedExistingFinal = 0;
+        var adopted = 0;
+
+        foreach (var chapter in chapters)
+        {
+            if (string.IsNullOrWhiteSpace(chapter.DraftText))
+            {
+                skippedNoDraft++;
+                continue;
+            }
+
+            if (!overrideExisting && !string.IsNullOrWhiteSpace(chapter.FinalText))
+            {
+                skippedExistingFinal++;
+                continue;
+            }
+
+            chapter.FinalText = chapter.DraftText;
+            if (chapter.Status < ChapterStatus.Finalized)
+            {
+                chapter.Status = ChapterStatus.Finalized;
+            }
+            adopted++;
+        }
+
+        if (adopted > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        return (chapters.Count, adopted, skippedNoDraft, skippedExistingFinal);
     }
 
     private async Task<Guid> GetOrCreateDefaultOutlineIdAsync(

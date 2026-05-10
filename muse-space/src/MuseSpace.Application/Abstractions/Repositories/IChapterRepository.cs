@@ -19,4 +19,14 @@ public interface IChapterRepository
     Task<int> BatchReorderAsync(Guid projectId, IReadOnlyList<Guid> orderedChapterIds, int startNumber, CancellationToken cancellationToken = default);
     /// <summary>按 <paramref name="orderedChapterIds"/> 顺序重排指定大纲内的章节 Number。</summary>
     Task<int> BatchReorderAsync(Guid projectId, Guid storyOutlineId, IReadOnlyList<Guid> orderedChapterIds, int startNumber, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 批量采用草稿为定稿（FinalText = DraftText，Status >= Finalized）。
+    /// 返回：(命中章节数, 实际采用数, 草稿为空跳过数, 已有定稿且未覆盖跳过数)。
+    /// </summary>
+    Task<(int RequestedCount, int AdoptedCount, int SkippedNoDraftCount, int SkippedExistingFinalCount)> BatchAdoptDraftAsync(
+        Guid projectId,
+        IReadOnlyCollection<Guid> chapterIds,
+        bool overrideExisting,
+        CancellationToken cancellationToken = default);
 }

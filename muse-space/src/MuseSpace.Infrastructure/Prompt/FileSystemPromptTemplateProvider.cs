@@ -6,6 +6,14 @@ namespace MuseSpace.Infrastructure.Prompt;
 
 public sealed class FileSystemPromptTemplateProvider : IPromptTemplateProvider
 {
+    private static readonly HashSet<string> KnownSections = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "system",
+        "instruction",
+        "context",
+        "output_format",
+    };
+
     private readonly string _basePath;
 
     public FileSystemPromptTemplateProvider(string basePath)
@@ -35,8 +43,8 @@ public sealed class FileSystemPromptTemplateProvider : IPromptTemplateProvider
 
         foreach (var line in content.Split('\n'))
         {
-            var match = Regex.Match(line.Trim(), @"^##\s+(\w+)\s*$");
-            if (match.Success)
+            var match = Regex.Match(line.Trim(), @"^##\s+([A-Za-z_][A-Za-z0-9_]*)\s*$");
+            if (match.Success && KnownSections.Contains(match.Groups[1].Value))
             {
                 if (!string.IsNullOrEmpty(currentSection))
                     sections[currentSection] = currentContent.ToString().Trim();

@@ -82,6 +82,7 @@ public sealed class SceneDraftSkill : ISkill
                 ["character_cards"] = string.Join("\n", storyContext.InvolvedCharacterCards),
                 ["world_rules"] = string.Join("\n", storyContext.WorldRules),
                 ["style_requirement"] = storyContext.StyleRequirement ?? string.Empty,
+                ["chapter_plan_contract"] = request.Parameters.GetValueOrDefault("ChapterPlanContract", string.Empty),
                 ["scene_goal"] = storyContext.SceneGoal,
                 ["conflict"] = storyContext.Conflict ?? string.Empty,
                 ["emotion_curve"] = storyContext.EmotionCurve ?? string.Empty,

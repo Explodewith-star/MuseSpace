@@ -112,6 +112,23 @@ export function adoptChapterDraft(
   )
 }
 
+export interface BatchAdoptDraftsResponse {
+  requestedCount: number
+  adoptedCount: number
+  skippedNoDraftCount: number
+  skippedExistingFinalCount: number
+}
+
+export function batchAdoptDrafts(
+  projectId: string,
+  payload: {
+    storyOutlineId?: string
+    overrideExisting?: boolean
+  } = {},
+): Promise<BatchAdoptDraftsResponse> {
+  return request.post(`/projects/${projectId}/chapters/batch-adopt-draft`, payload)
+}
+
 // ─── A3 批量章节草稿生成 ───────────────────────────────────────────────────
 
 /// <summary>批量生成草稿请求体。</summary>
