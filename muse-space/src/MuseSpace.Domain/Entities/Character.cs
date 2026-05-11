@@ -4,6 +4,8 @@ public class Character
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StoryProjectId { get; set; }
+    /// <summary>从哪部原著提取，null 表示原创手动添加。</summary>
+    public Guid? SourceNovelId { get; set; }
     public string Name { get; set; } = string.Empty;
     public int? Age { get; set; }
     public string? Role { get; set; }

@@ -110,9 +110,15 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
             .ToList();
 
         var characters = await _characterRepo.GetByProjectAsync(request.StoryProjectId, cancellationToken);
-        var characterPool = request.InvolvedCharacterIds?.Count > 0
-            ? characters.Where(c => request.InvolvedCharacterIds.Contains(c.Id)).ToList()
+
+        // 原创模式下，排除从原著提取的角色（SourceNovelId != null），只使用用户原创角色
+        var filteredCharacters = request.GenerationMode == GenerationMode.Original
+            ? characters.Where(c => c.SourceNovelId == null).ToList()
             : characters;
+
+        var characterPool = request.InvolvedCharacterIds?.Count > 0
+            ? filteredCharacters.Where(c => request.InvolvedCharacterIds.Contains(c.Id)).ToList()
+            : filteredCharacters;
         var characterCards = characterPool
             .Take(4)
             .Select(FormatCharacterCard)

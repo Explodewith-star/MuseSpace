@@ -76,6 +76,10 @@ const outlineForm = reactive({
   mode: 'Original' as GenerationMode,
   outlineSummary: '',
   branchTopic: '',
+  // AI 规划选项
+  withAiPlan: false,
+  aiGoal: '',
+  aiChapterCount: '10',
 })
 
 function openOutlineModal(mode: GenerationMode = 'Original') {
@@ -84,12 +88,17 @@ function openOutlineModal(mode: GenerationMode = 'Original') {
     mode,
     outlineSummary: '',
     branchTopic: '',
+    withAiPlan: false,
+    aiGoal: '',
+    aiChapterCount: '10',
   })
+  loadContextStats()
   outlineModalOpen.value = true
 }
 
 async function submitOutline() {
   if (!outlineForm.name.trim()) return
+  if (outlineForm.withAiPlan && !outlineForm.aiGoal.trim()) return
   outlineSaving.value = true
   try {
     const outline = await createStoryOutline(projectId, {
@@ -101,7 +110,19 @@ async function submitOutline() {
     outlines.value.push(outline)
     selectedOutlineId.value = outline.id
     outlineModalOpen.value = false
-    toast.success('大纲已创建')
+
+    if (outlineForm.withAiPlan) {
+      // 创建完立即触发 AI 规划
+      await triggerOutlinePlan(projectId, {
+        storyOutlineId: outline.id,
+        goal: outlineForm.aiGoal.trim(),
+        chapterCount: Number(outlineForm.aiChapterCount),
+        mode: 'new',
+      })
+      toast.success('大纲已创建，AI 规划已提交，请关注进度')
+    } else {
+      toast.success('大纲已创建')
+    }
   } catch {
     // handled
   } finally {
@@ -168,9 +189,9 @@ async function loadContextStats() {
   }
 }
 
+// "继续规划" —— 仅用于已有大纲追加章节计划的场景
 function openPlanModal() {
-  // 根据当前章节数自动选模式
-  planForm.mode = chapters.value.length > 0 ? 'continue' : 'new'
+  planForm.mode = 'continue'
   planForm.goal = ''
   planForm.chapterCount = selectedOutline.value?.targetChapterCount
     ? String(selectedOutline.value.targetChapterCount)
@@ -479,9 +500,15 @@ watch(outlineStage, (e) => {
           <i class="i-lucide-layers" />
           批量生成草稿
         </AppButton>
-        <AppButton variant="ghost" size="sm" @click="openPlanModal">
+        <AppButton
+          v-if="chapters.length > 0"
+          variant="ghost"
+          size="sm"
+          title="在当前大纲基础上继续 AI 规划更多章节"
+          @click="openPlanModal"
+        >
           <i class="i-lucide-sparkles" />
-          AI 规划大纲
+          继续规划
         </AppButton>
         <AppButton @click="openCreate">
           <i class="i-lucide-plus" />
@@ -607,17 +634,17 @@ watch(outlineStage, (e) => {
       v-else-if="!chapters.length"
       icon="i-lucide-book-text"
       title="还没有章节"
-      description="手动添加章节，或让 AI 帮你规划大纲"
+      description="新建一个大纲，让 AI 帮你规划章节结构，或手动逐章添加"
     >
       <template #action>
         <div class="empty-actions">
-          <AppButton variant="ghost" @click="openPlanModal">
+          <AppButton @click="openOutlineModal()">
             <i class="i-lucide-sparkles" />
-            AI 规划大纲
+            新建大纲
           </AppButton>
-          <AppButton @click="openCreate">
+          <AppButton variant="ghost" @click="openCreate">
             <i class="i-lucide-plus" />
-            手动添加
+            手动添加章节
           </AppButton>
         </div>
       </template>
@@ -686,8 +713,8 @@ watch(outlineStage, (e) => {
       @confirm="confirmDelete"
     />
 
-    <!-- AI 大纲规划弹窗 -->
-    <AppModal v-model="planModalOpen" title="AI 规划大纲" width="560px">
+    <!-- AI 大纲规划弹窗（继续规划：已有章节追加） -->
+    <AppModal v-model="planModalOpen" title="继续规划大纲" width="560px">
       <div class="plan-form">
         <div v-if="selectedOutline" class="plan-outline-card">
           <div>
@@ -699,35 +726,35 @@ watch(outlineStage, (e) => {
           </AppBadge>
         </div>
 
-        <p v-if="chapters.length" class="plan-hint">
-          当前大纲已有 <strong>{{ chapters.length }}</strong> 章，新规划会按该大纲继续编号。
+        <p class="plan-hint">
+          当前大纲已有 <strong>{{ chapters.length }}</strong> 章，AI 会在此基础上继续规划后续章节。
         </p>
 
-        <!-- 上下文提示 -->
+        <!-- 上下文统计 -->
         <div class="context-info">
           <span><i class="i-lucide-users" /> {{ characterCount }} 位角色</span>
           <span><i class="i-lucide-globe" /> {{ worldRuleCount }} 条世界观规则</span>
           <span v-if="!characterCount && !worldRuleCount" class="context-warn">
-            建议先添加角色和世界观规则，效果更好
+            建议先在「角色」「世界观」中添加设定，效果更好
           </span>
         </div>
 
         <AppTextarea
           v-model="planForm.goal"
-          label="故事目标 *"
-          placeholder="描述你希望的故事发展方向，如：少年从山村出发，经历三国争霸，最终统一天下..."
+          label="续写方向 *"
+          placeholder="描述接下来希望故事走向哪里，如：主角踏入皇城，与旧敌决战，最终揭开身世之谜..."
           :rows="4"
         />
 
         <AppInput
           v-model="planForm.chapterCount"
-          label="预计章节数"
+          label="追加章节数"
           type="number"
           placeholder="10"
         />
         <p class="plan-count-tip">
           <i class="i-lucide-lightbulb" />
-          建议设置 <strong>15～25 章</strong>；少于 10 章大纲较粗，超过 30 章 AI 容易生成重复内容
+          建议每次规划 <strong>10～20 章</strong>，超过 30 章 AI 容易出现重复情节
         </p>
       </div>
       <template #footer>
@@ -902,37 +929,103 @@ watch(outlineStage, (e) => {
       </template>
     </AppModal>
 
-    <AppModal v-model="outlineModalOpen" title="新建故事大纲" width="540px">
+    <!-- 新建大纲 Modal（主入口：创建壳 + 可选 AI 规划） -->
+    <AppModal v-model="outlineModalOpen" title="新建故事大纲" width="560px">
       <div class="outline-form">
-        <div class="outline-mode-grid">
-          <button
-            v-for="mode in (['Original', 'ContinueFromOriginal', 'SideStoryFromOriginal', 'ExpandOrRewrite'] as GenerationMode[])"
-            :key="mode"
-            type="button"
-            :class="['outline-mode-option', { active: outlineForm.mode === mode }]"
-            @click="outlineForm.mode = mode"
-          >
-            {{ MODE_LABELS[mode] }}
-          </button>
+        <!-- 第一步：写作模式选择 -->
+        <div class="outline-form__section">
+          <label class="outline-form__label">写作模式</label>
+          <div class="outline-mode-grid">
+            <button
+              v-for="mode in (['Original', 'ContinueFromOriginal', 'SideStoryFromOriginal', 'ExpandOrRewrite'] as GenerationMode[])"
+              :key="mode"
+              type="button"
+              :class="['outline-mode-option', { active: outlineForm.mode === mode }]"
+              @click="outlineForm.mode = mode"
+            >
+              {{ MODE_LABELS[mode] }}
+            </button>
+          </div>
         </div>
-        <AppInput v-model="outlineForm.name" label="大纲名称 *" placeholder="如：原创主线 / 番外：旧城雨夜" />
+
+        <!-- 大纲名称 -->
+        <AppInput
+          v-model="outlineForm.name"
+          label="大纲名称 *"
+          placeholder="如：原创主线 / 番外：旧城雨夜"
+        />
+
+        <!-- 大纲说明（可选） -->
         <AppTextarea
           v-model="outlineForm.outlineSummary"
-          label="大纲说明"
-          placeholder="这条故事线的核心方向、阶段目标或边界..."
+          label="故事概述（选填）"
+          placeholder="这条故事线的核心主题、阶段目标，如：少年觉醒异能，历经三城争霸，揭开家族秘密..."
           :rows="3"
         />
+
+        <!-- 番外时才显示的番外主题 -->
         <AppInput
           v-if="outlineForm.mode === 'SideStoryFromOriginal'"
           v-model="outlineForm.branchTopic"
           label="番外主题"
           placeholder="如：围绕配角少年时期展开十章支线"
         />
+
+        <!-- 分隔线 -->
+        <div class="outline-form__divider">
+          <label class="outline-form__toggle-row">
+            <input
+              v-model="outlineForm.withAiPlan"
+              type="checkbox"
+              class="outline-form__checkbox"
+            />
+            <span class="outline-form__toggle-label">
+              <i class="i-lucide-sparkles" />
+              创建后立即 AI 规划章节
+            </span>
+            <span class="outline-form__toggle-hint">让 AI 根据你的描述生成完整章节计划</span>
+          </label>
+        </div>
+
+        <!-- AI 规划展开区 -->
+        <template v-if="outlineForm.withAiPlan">
+          <!-- 上下文提示 -->
+          <div class="context-info context-info--compact">
+            <span><i class="i-lucide-users" /> {{ characterCount }} 位角色</span>
+            <span><i class="i-lucide-globe" /> {{ worldRuleCount }} 条世界观规则</span>
+            <span v-if="!characterCount && !worldRuleCount" class="context-warn">
+              建议先在「角色」「世界观」中添加设定，AI 效果更好
+            </span>
+          </div>
+
+          <AppTextarea
+            v-model="outlineForm.aiGoal"
+            label="故事目标 *"
+            placeholder="描述你希望的故事发展方向，如：少年从山村出发，经历三城争霸，最终统一天下..."
+            :rows="4"
+          />
+
+          <AppInput
+            v-model="outlineForm.aiChapterCount"
+            label="预计章节数"
+            type="number"
+            placeholder="10"
+          />
+          <p class="plan-count-tip">
+            <i class="i-lucide-lightbulb" />
+            建议设置 <strong>15～25 章</strong>；超过 30 章 AI 容易出现重复情节
+          </p>
+        </template>
       </div>
       <template #footer>
         <AppButton variant="ghost" @click="outlineModalOpen = false">取消</AppButton>
-        <AppButton :loading="outlineSaving" :disabled="!outlineForm.name.trim()" @click="submitOutline">
-          创建
+        <AppButton
+          :loading="outlineSaving"
+          :disabled="!outlineForm.name.trim() || (outlineForm.withAiPlan && !outlineForm.aiGoal.trim())"
+          @click="submitOutline"
+        >
+          <i v-if="outlineForm.withAiPlan" class="i-lucide-sparkles" />
+          {{ outlineForm.withAiPlan ? '创建并开始规划' : '创建大纲' }}
         </AppButton>
       </template>
     </AppModal>
@@ -1287,6 +1380,18 @@ watch(outlineStage, (e) => {
   gap: 14px;
 }
 
+.outline-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.outline-form__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
 .outline-mode-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1309,6 +1414,48 @@ watch(outlineStage, (e) => {
   font-weight: 600;
 }
 
+/* AI 规划开关分隔线 */
+.outline-form__divider {
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+  margin-top: 2px;
+}
+
+.outline-form__toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.outline-form__checkbox {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.outline-form__toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.outline-form__toggle-label i {
+  color: var(--color-primary);
+}
+
+.outline-form__toggle-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
 .context-info {
   display: flex;
   gap: 14px;
@@ -1317,6 +1464,12 @@ watch(outlineStage, (e) => {
   padding: 8px 12px;
   background: var(--color-bg-elevated);
   border-radius: 6px;
+}
+
+.context-info--compact {
+  padding: 6px 10px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .context-info i {

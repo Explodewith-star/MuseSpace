@@ -29,6 +29,7 @@ public sealed class CharacterSuggestionApplier : ISuggestionApplier
         {
             Id = suggestion.TargetEntityId ?? Guid.NewGuid(),
             StoryProjectId = suggestion.StoryProjectId,
+            SourceNovelId = suggestion.SourceNovelId,
             Name = data.Name ?? "未命名角色",
             Age = data.Age,
             Role = data.Role,

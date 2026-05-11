@@ -105,6 +105,8 @@ function toggle() {
 
 .app-sidebar__icon {
   font-size: 17px;
+  width: 1.2em;
+  height: 1.2em;
   flex-shrink: 0;
 }
 

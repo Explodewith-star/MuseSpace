@@ -144,6 +144,7 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.PublicSecrets).HasColumnType("text");
             entity.Property(e => e.PrivateSecrets).HasColumnType("text");
             entity.Property(e => e.CurrentState).HasColumnType("text");
+            entity.Property(e => e.SourceNovelId).IsRequired(false);
             entity.HasIndex(e => e.StoryProjectId);
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
                   .OnDelete(DeleteBehavior.Cascade);

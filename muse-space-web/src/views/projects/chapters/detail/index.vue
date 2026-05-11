@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppButton from '@/components/base/AppButton.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
@@ -12,6 +13,9 @@ import { initChapterDetailState, CHAPTER_STATUS_LABELS, CHAPTER_STATUS_VARIANTS 
 
 const router = useRouter()
 const route = useRoute()
+
+const draftExpanded = ref(false)
+const finalExpanded = ref(false)
 
 const {
   chapter,
@@ -385,7 +389,11 @@ function severityLabel(s?: string): string {
         -->
 
         <template v-if="editingSection !== 'draft'">
-          <div v-if="chapter.draftText" class="text-content">{{ chapter.draftText }}</div>
+          <div v-if="chapter.draftText" :class="['text-content', { 'text-content--collapsed': !draftExpanded }]">{{ chapter.draftText }}</div>
+          <button v-if="chapter.draftText" class="expand-toggle" @click="draftExpanded = !draftExpanded">
+            <i :class="draftExpanded ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+            {{ draftExpanded ? '收起' : '展开全文' }}
+          </button>
           <div v-else-if="chapter.conflict || chapter.emotionCurve" class="empty-hint draft-ready-hint">
             <i class="i-lucide-wand-2" />
             <span>章节计划已就绪，点击「<strong>生成本章草稿</strong>」让 AI 写出完整草稿，完成后将自动进行文风一致性审查。</span>
@@ -464,7 +472,11 @@ function severityLabel(s?: string): string {
         </div>
 
         <template v-if="editingSection !== 'final'">
-          <div v-if="chapter.finalText" class="text-content final-text">{{ chapter.finalText }}</div>
+          <div v-if="chapter.finalText" :class="['text-content', 'final-text', { 'text-content--collapsed': !finalExpanded }]">{{ chapter.finalText }}</div>
+          <button v-if="chapter.finalText" class="expand-toggle" @click="finalExpanded = !finalExpanded">
+            <i :class="finalExpanded ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+            {{ finalExpanded ? '收起' : '展开全文' }}
+          </button>
           <div v-else class="empty-hint">暂无定稿内容</div>
         </template>
 
@@ -677,6 +689,40 @@ function severityLabel(s?: string): string {
   line-height: 1.85;
   color: var(--color-text-primary);
   white-space: pre-wrap;
+}
+
+.text-content--collapsed {
+  max-height: calc(1.85em * 5);
+  overflow: hidden;
+  position: relative;
+}
+
+.text-content--collapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2em;
+  background: linear-gradient(transparent, var(--color-bg-surface));
+  pointer-events: none;
+}
+
+.expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.expand-toggle:hover {
+  text-decoration: underline;
 }
 
 .final-text {
