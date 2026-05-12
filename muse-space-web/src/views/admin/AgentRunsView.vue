@@ -13,6 +13,7 @@ import AppButton from '@/components/base/AppButton.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import AppModal from '@/components/base/AppModal.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 
 const items = ref<AgentRunListItem[]>([])
 const total = ref(0)
@@ -165,12 +166,16 @@ onMounted(() => {
       </div>
       <div>
         <div class="text-xs text-gray-500 mb-1">状态</div>
-        <select v-model="filterStatus" class="border px-2 py-1 rounded text-sm">
-          <option value="">全部</option>
-          <option value="Running">Running</option>
-          <option value="Succeeded">Succeeded</option>
-          <option value="Failed">Failed</option>
-        </select>
+        <AppSelect
+          v-model="filterStatus"
+          :searchable="false"
+          :options="[
+            { value: '', label: '全部' },
+            { value: 'Running', label: 'Running' },
+            { value: 'Succeeded', label: 'Succeeded' },
+            { value: 'Failed', label: 'Failed' },
+          ]"
+        />
       </div>
       <AppButton @click="applyFilters">筛选</AppButton>
       <AppButton variant="secondary" @click="fetchStats">刷新统计</AppButton>

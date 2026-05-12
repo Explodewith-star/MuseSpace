@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppButton from '@/components/base/AppButton.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
@@ -8,6 +8,7 @@ import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AppCard from '@/components/base/AppCard.vue'
 import AppConfirm from '@/components/base/AppConfirm.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 import ChapterEventsPanel from './ChapterEventsPanel.vue'
 import { initChapterDetailState, CHAPTER_STATUS_LABELS, CHAPTER_STATUS_VARIANTS } from './hooks'
 
@@ -62,6 +63,20 @@ const REVEAL_LEVEL_LABELS: Record<number, string> = {
   3: '正面冲突',
   4: '揭示/收束',
 }
+
+const REVEAL_OPTIONS = [
+  { value: '', label: '自动推断' },
+  { value: '0', label: '日常' },
+  { value: '1', label: '伏笔' },
+  { value: '2', label: '直接异常' },
+  { value: '3', label: '正面冲突' },
+  { value: '4', label: '揭示/收束' },
+]
+
+const revealLevelStr = computed({
+  get: () => planForm.allowedRevealLevel == null ? '' : String(planForm.allowedRevealLevel),
+  set: (v: string) => { planForm.allowedRevealLevel = v === '' ? undefined : Number(v) },
+})
 
 function goBack() {
   router.push(`/projects/${route.params.id}/chapters`)
@@ -294,14 +309,12 @@ function severityLabel(s?: string): string {
           </div>
           <div class="field-block">
             <span class="field-label">揭示等级</span>
-            <select v-model.number="planForm.allowedRevealLevel" class="reveal-select">
-              <option :value="undefined">自动推断</option>
-              <option :value="0">日常</option>
-              <option :value="1">伏笔</option>
-              <option :value="2">直接异常</option>
-              <option :value="3">正面冲突</option>
-              <option :value="4">揭示/收束</option>
-            </select>
+            <AppSelect
+              v-model="revealLevelStr"
+              :options="REVEAL_OPTIONS"
+              :searchable="false"
+              placeholder="自动推断"
+            />
           </div>
           <div class="edit-actions">
             <AppButton variant="secondary" size="sm" @click="cancelEdit">取消</AppButton>
@@ -1013,17 +1026,5 @@ function severityLabel(s?: string): string {
 
 .mode-input--sm {
   width: 90px;
-}
-
-.reveal-select {
-  height: 32px;
-  max-width: 180px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  font-size: 13px;
-  outline: none;
 }
 </style>

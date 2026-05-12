@@ -39,6 +39,35 @@ public class PlotThread
     /// <summary>逗号分隔的标签，如"修真,长卷"。</summary>
     public string? Tags { get; set; }
 
+    // ── 作用域字段（P2-⑨）────────────────────────────────────────────────
+
+    /// <summary>
+    /// 伏笔埋设所在的批次（StoryOutline）ID。
+    /// 由 PlotThreadTrackingJob 根据触发章节所属批次自动填充；
+    /// 手动创建时亦可指定。null 表示历史数据（视同全项目可见）。
+    /// </summary>
+    public Guid? OutlineId { get; set; }
+
+    /// <summary>
+    /// 伏笔所属故事链（OutlineChain）ID。
+    /// 由 PlotThreadTrackingJob 根据 OutlineId 自动推导填充。
+    /// null 表示历史数据（视同全项目可见）。
+    /// </summary>
+    public Guid? ChainId { get; set; }
+
+    /// <summary>
+    /// 伏笔的可见性作用域，控制草稿生成时是否注入此伏笔到 Prompt。
+    /// 默认为 Chain：在同一故事链的所有批次内持续追踪。
+    /// 可手动调整为 ThisOutline（番外局部）或 Project（全书谜题）。
+    /// </summary>
+    public PlotThreadVisibility Visibility { get; set; } = PlotThreadVisibility.Chain;
+
+    /// <summary>
+    /// 伏笔回收所在的批次（StoryOutline）ID。
+    /// 状态变为 PaidOff 时，由 Job 或用户填写。
+    /// </summary>
+    public Guid? ResolvedInOutlineId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

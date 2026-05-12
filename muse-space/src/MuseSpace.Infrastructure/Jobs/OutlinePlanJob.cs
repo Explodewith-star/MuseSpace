@@ -115,6 +115,32 @@ public sealed class OutlinePlanJob
             var existingChapters = await _chapterRepo.GetByOutlineAsync(projectId, outline.Id);
             var orderedChapters = existingChapters.OrderBy(c => c.Number).ToList();
 
+            // 沿 PreviousOutlineId 链读取前驱批次的章节摘要（最多追溯 5 层），为续写提供上下文
+            var priorBatchSummaries = new List<string>();
+            if (outline.PreviousOutlineId.HasValue)
+            {
+                var prevId = outline.PreviousOutlineId;
+                var depth = 0;
+                while (prevId.HasValue && depth < 5)
+                {
+                    var prevOutline = await _outlineRepo.GetByIdAsync(projectId, prevId.Value);
+                    if (prevOutline is null) break;
+                    var prevChapters = await _chapterRepo.GetByOutlineAsync(projectId, prevOutline.Id);
+                    if (prevChapters.Count > 0)
+                    {
+                        var summaryLines = prevChapters
+                            .OrderBy(c => c.Number)
+                            .Where(c => !string.IsNullOrWhiteSpace(c.Summary))
+                            .TakeLast(10) // 每批次最多取最后10章摘要
+                            .Select(c => $"- 第{c.Number}章 {c.Title ?? "无标题"}: {c.Summary}");
+                        priorBatchSummaries.Insert(0,
+                            $"### 前驱批次《{prevOutline.Name}》（共 {prevChapters.Count} 章）\n\n{string.Join("\n", summaryLines)}");
+                    }
+                    prevId = prevOutline.PreviousOutlineId;
+                    depth++;
+                }
+            }
+
             // 2. 组装上下文文本
             var contextParts = new List<string>();
 
@@ -141,6 +167,12 @@ public sealed class OutlinePlanJob
                 var chaptersText = string.Join("\n", orderedChapters.Select(c =>
                     $"- 第{c.Number}章 {c.Title ?? "无标题"}: {c.Summary ?? c.Goal ?? "无摘要"}"));
                 contextParts.Add($"## 已有章节（{orderedChapters.Count} 章）\n\n{chaptersText}");
+            }
+
+            // 前驱批次上下文（跨批次续写连贯性）
+            if (priorBatchSummaries.Count > 0)
+            {
+                contextParts.Add($"## 前驱批次故事摘要\n\n{string.Join("\n\n", priorBatchSummaries)}");
             }
 
             var contextBlock = contextParts.Count > 0

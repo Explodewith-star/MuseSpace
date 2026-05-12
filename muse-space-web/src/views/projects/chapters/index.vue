@@ -43,6 +43,14 @@ const selectedOutline = computed(() =>
 )
 const selectedOutlineChapters = computed(() => chapters.value)
 
+// ── Mode Tab + 批次子导航 ──────────────────────────────────
+const ALL_MODES: GenerationMode[] = [
+  'Original',
+  'ContinueFromOriginal',
+  'SideStoryFromOriginal',
+  'ExpandOrRewrite',
+]
+
 const MODE_LABELS: Record<GenerationMode, string> = {
   Original: '原创主线',
   ContinueFromOriginal: '原著续写',
@@ -50,12 +58,52 @@ const MODE_LABELS: Record<GenerationMode, string> = {
   ExpandOrRewrite: '扩写/改写',
 }
 
+const MODE_ICONS: Record<GenerationMode, string> = {
+  Original: 'i-lucide-pen-line',
+  ContinueFromOriginal: 'i-lucide-book-copy',
+  SideStoryFromOriginal: 'i-lucide-git-branch',
+  ExpandOrRewrite: 'i-lucide-text-cursor-input',
+}
+
+const selectedMode = ref<GenerationMode>('Original')
+
+/** 每个模式下有多少条大纲 */
+const modeOutlineCounts = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const m of ALL_MODES) counts[m] = 0
+  for (const o of outlines.value) counts[o.mode] = (counts[o.mode] ?? 0) + 1
+  return counts
+})
+
+/** 当前模式下的大纲列表（按创建时间排序） */
+const modeOutlines = computed(() =>
+  outlines.value
+    .filter((o) => o.mode === selectedMode.value)
+    .sort((a, b) => (a.chainIndex || 0) - (b.chainIndex || 0) || a.createdAt.localeCompare(b.createdAt)),
+)
+
+function selectMode(mode: GenerationMode) {
+  selectedMode.value = mode
+  // 切换模式后，自动选中该模式下第一个大纲
+  const first = modeOutlines.value[0]
+  if (first) {
+    selectOutline(first.id)
+  } else {
+    selectedOutlineId.value = ''
+  }
+}
+
 async function loadOutlines() {
   outlinesLoading.value = true
   try {
     outlines.value = await getStoryOutlines(projectId)
     if (!selectedOutlineId.value || !outlines.value.some((o) => o.id === selectedOutlineId.value)) {
-      selectedOutlineId.value = outlines.value.find((o) => o.isDefault)?.id ?? outlines.value[0]?.id ?? ''
+      // 先选中默认大纲，再据此确定 mode tab
+      const defaultOutline = outlines.value.find((o) => o.isDefault) ?? outlines.value[0]
+      if (defaultOutline) {
+        selectedOutlineId.value = defaultOutline.id
+        selectedMode.value = defaultOutline.mode as GenerationMode
+      }
     }
   } catch {
     // handled
@@ -82,10 +130,10 @@ const outlineForm = reactive({
   aiChapterCount: '10',
 })
 
-function openOutlineModal(mode: GenerationMode = 'Original') {
+function openOutlineModal(mode?: GenerationMode) {
   Object.assign(outlineForm, {
     name: '',
-    mode,
+    mode: mode ?? selectedMode.value,
     outlineSummary: '',
     branchTopic: '',
     withAiPlan: false,
@@ -101,11 +149,16 @@ async function submitOutline() {
   if (outlineForm.withAiPlan && !outlineForm.aiGoal.trim()) return
   outlineSaving.value = true
   try {
+    // 同模式下已有批次时，将最后一个批次作为前驱（支持 OutlinePlanJob 读取前驱摘要）
+    const sameModeOutlines = modeOutlines.value // 已按 chainIndex/createdAt 排序
+    const lastInMode = sameModeOutlines.length > 0 ? sameModeOutlines[sameModeOutlines.length - 1] : null
     const outline = await createStoryOutline(projectId, {
       name: outlineForm.name.trim(),
       mode: outlineForm.mode,
       outlineSummary: outlineForm.outlineSummary.trim() || undefined,
       branchTopic: outlineForm.branchTopic.trim() || undefined,
+      previousOutlineId: lastInMode?.id,
+      chainId: lastInMode?.chainId ?? undefined,
     })
     outlines.value.push(outline)
     selectedOutlineId.value = outline.id
@@ -149,7 +202,10 @@ const {
 } = initChaptersState({ getSelectedOutlineId: () => selectedOutlineId.value || undefined })
 
 watch(selectedOutlineId, async (id) => {
-  if (!id) return
+  if (!id) {
+    chapters.value = []
+    return
+  }
   await loadChapters()
   await refreshPendingOutline()
 }, { flush: 'post' })
@@ -465,9 +521,45 @@ watch(outlineStage, (e) => {
 
 <template>
   <div class="page">
-    <div class="page__header">
-      <h2 class="page__title">章节管理</h2>
-      <div class="header-actions">
+    <!-- Mode Tabs -->
+    <div class="mode-tabs">
+      <button
+        v-for="mode in ALL_MODES"
+        :key="mode"
+        type="button"
+        :class="['mode-tab', { 'mode-tab--active': selectedMode === mode }]"
+        @click="selectMode(mode)"
+      >
+        <i :class="MODE_ICONS[mode]" />
+        <span class="mode-tab__label">{{ MODE_LABELS[mode] }}</span>
+        <span v-if="modeOutlineCounts[mode]" class="mode-tab__count">{{ modeOutlineCounts[mode] }}</span>
+      </button>
+    </div>
+
+    <!-- 批次子导航 + 工具栏 -->
+    <div class="batch-nav">
+      <div class="batch-nav__tabs">
+        <button
+          v-for="(outline, idx) in modeOutlines"
+          :key="outline.id"
+          type="button"
+          :class="['batch-tab', { 'batch-tab--active': outline.id === selectedOutlineId }]"
+          @click="selectOutline(outline.id)"
+        >
+          <span class="batch-tab__name">{{ outline.name || `批次 ${idx + 1}` }}</span>
+          <span class="batch-tab__meta">{{ outline.chapterCount }} 章</span>
+          <i v-if="outline.isDefault" class="i-lucide-star batch-tab__star" />
+        </button>
+        <button
+          type="button"
+          class="batch-tab batch-tab--add"
+          @click="openOutlineModal()"
+        >
+          <i class="i-lucide-plus" />
+          <span>新建批次</span>
+        </button>
+      </div>
+      <div class="batch-nav__actions">
         <AppButton
           v-if="chapters.length > 0"
           variant="ghost"
@@ -517,34 +609,14 @@ watch(outlineStage, (e) => {
       </div>
     </div>
 
-    <div class="outline-switcher">
-      <div class="outline-tabs" v-if="outlines.length">
-        <button
-          v-for="outline in outlines"
-          :key="outline.id"
-          type="button"
-          :class="['outline-tab', { active: outline.id === selectedOutlineId }]"
-          @click="selectOutline(outline.id)"
-        >
-          <span class="outline-tab__name">{{ outline.name }}</span>
-          <span class="outline-tab__meta">
-            {{ MODE_LABELS[outline.mode] }} · {{ outline.chapterCount }} 章
-          </span>
-        </button>
+    <!-- 当前批次概览 -->
+    <div v-if="selectedOutline" class="batch-info">
+      <div class="batch-info__left">
+        <span class="batch-info__name">{{ selectedOutline.name }}</span>
+        <AppBadge size="sm" variant="default">{{ MODE_LABELS[selectedOutline.mode] }}</AppBadge>
       </div>
-      <div v-else-if="outlinesLoading" class="outline-loading">正在加载大纲...</div>
-      <AppButton variant="ghost" size="sm" @click="openOutlineModal()">
-        <i class="i-lucide-folder-plus" />
-        新建大纲
-      </AppButton>
-    </div>
-
-    <div v-if="selectedOutline" class="outline-current">
-      <i class="i-lucide-git-branch" />
-      <span>{{ selectedOutline.name }}</span>
-      <strong>{{ MODE_LABELS[selectedOutline.mode] }}</strong>
-      <span v-if="selectedOutline.outlineSummary">{{ selectedOutline.outlineSummary }}</span>
-      <span v-else-if="selectedOutline.branchTopic">{{ selectedOutline.branchTopic }}</span>
+      <span v-if="selectedOutline.outlineSummary" class="batch-info__summary">{{ selectedOutline.outlineSummary }}</span>
+      <span v-else-if="selectedOutline.branchTopic" class="batch-info__summary">{{ selectedOutline.branchTopic }}</span>
     </div>
 
     <!-- Agent 进度条 -->
@@ -565,7 +637,7 @@ watch(outlineStage, (e) => {
         <strong>{{ pendingOutlineCount }}</strong>
         份待处理大纲草案，前往建议中心查看并导入章节</span
       >
-      <AppButton size="sm" @click="router.push(`/projects/${projectId}/outline`)">
+      <AppButton size="sm" @click="router.push(`/projects/${projectId}/suggestions`)">
         前往查看
       </AppButton>
     </div>
@@ -633,16 +705,16 @@ watch(outlineStage, (e) => {
     <AppEmpty
       v-else-if="!chapters.length"
       icon="i-lucide-book-text"
-      title="还没有章节"
-      description="新建一个大纲，让 AI 帮你规划章节结构，或手动逐章添加"
+      :title="selectedOutline ? '当前批次暂无章节' : '开始创作'"
+      :description="selectedOutline ? '点击「继续规划」让 AI 生成章节，或手动添加' : '新建一个批次，让 AI 帮你规划章节结构'"
     >
       <template #action>
         <div class="empty-actions">
-          <AppButton @click="openOutlineModal()">
+          <AppButton v-if="!selectedOutline" @click="openOutlineModal()">
             <i class="i-lucide-sparkles" />
-            新建大纲
+            新建批次
           </AppButton>
-          <AppButton variant="ghost" @click="openCreate">
+          <AppButton v-else variant="ghost" @click="openCreate">
             <i class="i-lucide-plus" />
             手动添加章节
           </AppButton>
@@ -1033,91 +1105,176 @@ watch(outlineStage, (e) => {
 </template>
 
 <style scoped>
-.page__header {
+/* ── Mode Tabs ────────────────────────────────────────── */
+.mode-tabs {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.page__title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.outline-switcher {
-  display: flex;
-  align-items: stretch;
-  gap: 10px;
+  gap: 4px;
+  padding: 4px;
+  background: var(--color-bg-elevated);
+  border-radius: 12px;
   margin-bottom: 12px;
 }
 
-.outline-tabs {
+.mode-tab {
   display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 1;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.outline-tab {
-  min-width: 150px;
-  max-width: 220px;
-  padding: 9px 12px;
-  border: 1px solid var(--color-border);
+  justify-content: center;
+  padding: 8px 12px;
+  border: none;
   border-radius: 8px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-secondary);
-  text-align: left;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.outline-tab.active {
-  border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-  color: var(--color-primary);
-}
-
-.outline-tab__name {
+  background: transparent;
+  color: var(--color-text-muted);
   font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
   white-space: nowrap;
 }
 
-.outline-tab__meta,
-.outline-loading {
-  font-size: 12px;
-  color: var(--color-text-muted);
+.mode-tab:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-bg-surface) 60%, transparent);
 }
 
-.outline-current {
+.mode-tab--active {
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.mode-tab i {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.mode-tab__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mode-tab--active .mode-tab__count {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* ── 批次子导航 + 工具栏 ──────────────────────────────── */
+.batch-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  min-height: 40px;
+}
+
+.batch-nav__tabs {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.batch-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.batch-tab:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
+}
+
+.batch-tab--active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.batch-tab__meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.batch-tab--active .batch-tab__meta {
+  color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+}
+
+.batch-tab__star {
+  font-size: 11px;
+  color: var(--color-warning, #f59e0b);
+}
+
+.batch-tab--add {
+  border-style: dashed;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.batch-tab--add:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+.batch-nav__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── 批次概览 ─────────────────────────────────────────── */
+.batch-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--color-bg-elevated);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.batch-info__left {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 16px;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-elevated);
-  font-size: 13px;
 }
 
-.outline-current strong {
-  color: var(--color-primary);
+.batch-info__name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.batch-info__summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-actions {

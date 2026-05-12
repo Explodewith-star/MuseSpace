@@ -14,6 +14,12 @@ public sealed class PlotThreadResponse
     /// <summary>预期回收于第几章。</summary>
     public int? ExpectedResolveByChapterNumber { get; set; }
     public string? Tags { get; set; }
+    // ── 作用域字段 ──
+    public Guid? OutlineId { get; set; }
+    public Guid? ChainId { get; set; }
+    /// <summary>ThisOutline / Chain / Project</summary>
+    public string Visibility { get; set; } = "Chain";
+    public Guid? ResolvedInOutlineId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -31,4 +37,10 @@ public sealed class UpsertPlotThreadRequest
     /// <summary>预期回收于第几章。</summary>
     public int? ExpectedResolveByChapterNumber { get; set; }
     public string? Tags { get; set; }
+    /// <summary>
+    /// 可见性作用域：ThisOutline / Chain / Project。
+    /// 不传则保持原值（新建时默认 Chain）。
+    /// </summary>
+    public string? Visibility { get; set; }
 }
+

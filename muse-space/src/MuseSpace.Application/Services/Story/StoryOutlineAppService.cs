@@ -52,6 +52,14 @@ public sealed class StoryOutlineAppService
         CreateStoryOutlineRequest request,
         CancellationToken cancellationToken = default)
     {
+        // 如果指定了 ChainId，自动计算 ChainIndex
+        int chainIndex = 0;
+        if (request.ChainId.HasValue)
+        {
+            var allOutlines = await _outlineRepository.GetByProjectAsync(projectId, cancellationToken);
+            chainIndex = allOutlines.Count(o => o.ChainId == request.ChainId.Value) + 1;
+        }
+
         var outline = new StoryOutline
         {
             Id = Guid.NewGuid(),
@@ -60,6 +68,9 @@ public sealed class StoryOutlineAppService
                 ? BuildDefaultName(request.Mode)
                 : request.Name.Trim(),
             Mode = ParseEnum(request.Mode, GenerationMode.Original),
+            ChainId = request.ChainId,
+            ChainIndex = chainIndex,
+            PreviousOutlineId = request.PreviousOutlineId,
             SourceNovelId = request.SourceNovelId,
             SourceRangeStart = request.SourceRangeStart,
             SourceRangeEnd = request.SourceRangeEnd,
@@ -124,6 +135,9 @@ public sealed class StoryOutlineAppService
             StoryProjectId = outline.StoryProjectId,
             Name = outline.Name,
             Mode = outline.Mode.ToString(),
+            ChainId = outline.ChainId,
+            ChainIndex = outline.ChainIndex,
+            PreviousOutlineId = outline.PreviousOutlineId,
             SourceNovelId = outline.SourceNovelId,
             SourceRangeStart = outline.SourceRangeStart,
             SourceRangeEnd = outline.SourceRangeEnd,

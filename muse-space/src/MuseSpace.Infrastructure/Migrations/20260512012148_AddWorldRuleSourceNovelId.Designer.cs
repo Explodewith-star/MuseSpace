@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MuseSpace.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -13,9 +14,11 @@ using Pgvector;
 namespace MuseSpace.Infrastructure.Migrations
 {
     [DbContext(typeof(MuseSpaceDbContext))]
-    partial class MuseSpaceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260512012148_AddWorldRuleSourceNovelId")]
+    partial class AddWorldRuleSourceNovelId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -790,43 +793,10 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.ToTable("novel_chunks", (string)null);
                 });
 
-            modelBuilder.Entity("MuseSpace.Domain.Entities.OutlineChain", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("DisplayOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Mode")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<Guid>("StoryProjectId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StoryProjectId");
-
-                    b.ToTable("outline_chains", (string)null);
-                });
-
             modelBuilder.Entity("MuseSpace.Domain.Entities.PlotThread", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ChainId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
@@ -842,9 +812,6 @@ namespace MuseSpace.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<Guid?>("OutlineId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("PlantedInChapterId")
                         .HasColumnType("uuid");
 
@@ -852,9 +819,6 @@ namespace MuseSpace.Infrastructure.Migrations
                         .HasColumnType("uuid[]");
 
                     b.Property<Guid?>("ResolvedInChapterId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ResolvedInOutlineId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Status")
@@ -875,16 +839,9 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("Visibility")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
                     b.HasKey("Id");
 
                     b.HasIndex("StoryProjectId");
-
-                    b.HasIndex("StoryProjectId", "ChainId");
 
                     b.HasIndex("StoryProjectId", "Status");
 
@@ -940,12 +897,6 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<string>("BranchTopic")
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("ChainId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("ChainIndex")
-                        .HasColumnType("integer");
-
                     b.Property<string>("ContinuationAnchor")
                         .HasColumnType("text");
 
@@ -969,9 +920,6 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<string>("OutlineSummary")
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("PreviousOutlineId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("SourceNovelId")
                         .HasColumnType("uuid");
 
@@ -991,8 +939,6 @@ namespace MuseSpace.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ChainId");
 
                     b.HasIndex("SourceNovelId");
 
@@ -1318,15 +1264,6 @@ namespace MuseSpace.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("MuseSpace.Domain.Entities.OutlineChain", b =>
-                {
-                    b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
-                        .WithMany()
-                        .HasForeignKey("StoryProjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("MuseSpace.Domain.Entities.PlotThread", b =>
                 {
                     b.HasOne("MuseSpace.Domain.Entities.StoryProject", null)
@@ -1347,11 +1284,6 @@ namespace MuseSpace.Infrastructure.Migrations
 
             modelBuilder.Entity("MuseSpace.Domain.Entities.StoryOutline", b =>
                 {
-                    b.HasOne("MuseSpace.Domain.Entities.OutlineChain", null)
-                        .WithMany()
-                        .HasForeignKey("ChainId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("MuseSpace.Domain.Entities.Novel", null)
                         .WithMany()
                         .HasForeignKey("SourceNovelId")

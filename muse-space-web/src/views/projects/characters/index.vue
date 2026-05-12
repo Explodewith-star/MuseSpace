@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import AppButton from '@/components/base/AppButton.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
@@ -37,16 +38,71 @@ const {
   extractLoading,
   extractFromNovel,
 } = initCharactersState()
+
+// ── 搜索 & 视图切换 ──
+const searchQuery = ref('')
+const viewMode = ref<'card' | 'list'>('card')
+
+const filteredCharacters = computed(() => {
+  if (!searchQuery.value.trim()) return characters.value
+  const q = searchQuery.value.trim().toLowerCase()
+  return characters.value.filter(
+    (c) =>
+      c.name.toLowerCase().includes(q) ||
+      (c.role ?? '').toLowerCase().includes(q) ||
+      (c.tags ?? '').toLowerCase().includes(q) ||
+      (c.personalitySummary ?? '').toLowerCase().includes(q),
+  )
+})
+
+// ── 分区：原创 vs 原著 ──
+const originalChars = computed(() => filteredCharacters.value.filter((c) => !c.sourceNovelId))
+const importedChars = computed(() => filteredCharacters.value.filter((c) => !!c.sourceNovelId))
+
+// ── 列表视图展开详情 ──
+const expandedId = ref<string | null>(null)
+function toggleExpand(id: string) {
+  expandedId.value = expandedId.value === id ? null : id
+}
 </script>
 
 <template>
   <div class="page">
     <div class="page__header">
       <h2 class="page__title">角色库</h2>
-      <AppButton @click="openCreate">
-        <i class="i-lucide-plus" />
-        添加角色
-      </AppButton>
+      <div class="header-actions">
+        <div class="search-box">
+          <i class="i-lucide-search search-icon" />
+          <input
+            v-model="searchQuery"
+            class="search-input"
+            type="text"
+            placeholder="搜索角色名、定位、标签…"
+          />
+        </div>
+        <div class="view-toggle">
+          <button
+            class="view-toggle-btn"
+            :class="{ active: viewMode === 'card' }"
+            title="卡片视图"
+            @click="viewMode = 'card'"
+          >
+            <i class="i-lucide-layout-grid" />
+          </button>
+          <button
+            class="view-toggle-btn"
+            :class="{ active: viewMode === 'list' }"
+            title="列表视图"
+            @click="viewMode = 'list'"
+          >
+            <i class="i-lucide-list" />
+          </button>
+        </div>
+        <AppButton @click="openCreate">
+          <i class="i-lucide-plus" />
+          添加角色
+        </AppButton>
+      </div>
     </div>
 
     <!-- D3-2 Agent 工作台：从原著批量提取候选角色 -->
@@ -91,37 +147,178 @@ const {
       </template>
     </AppEmpty>
 
-    <!-- 角色卡片网格 -->
-    <div v-else class="char-grid">
-      <div v-for="char in characters" :key="char.id" class="char-card">
-        <div class="char-card__header">
-          <div>
-            <h3 class="char-name">{{ char.name }}</h3>
-            <p v-if="char.role" class="char-role">{{ char.role }}</p>
-          </div>
-          <div class="char-card__actions">
-            <AppBadge v-if="char.age" variant="muted">{{ char.age }} 岁</AppBadge>
-            <button class="card-action-btn" title="编辑角色" @click="openEdit(char)">
-              <i class="i-lucide-pencil" />
-            </button>
-            <button class="card-delete-btn" title="删除角色" @click="openDelete(char)">
-              <i class="i-lucide-trash-2" />
-            </button>
-          </div>
-        </div>
-        <p v-if="char.personalitySummary" class="char-summary">{{ char.personalitySummary }}</p>
-        <div v-if="char.tags" class="char-tags">
-          <AppBadge
-            v-for="tag in char.tags.split(',').filter(Boolean)"
-            :key="tag"
-            variant="primary"
-            size="sm"
-          >
-            {{ tag.trim() }}
-          </AppBadge>
-        </div>
+    <!-- ═══ 角色内容 ═══ -->
+    <template v-else>
+      <!-- 搜索无结果 -->
+      <div v-if="filteredCharacters.length === 0" class="empty">
+        无匹配角色
       </div>
-    </div>
+      <template v-else>
+        <!-- ── 原创角色分区 ── -->
+        <div v-if="originalChars.length > 0" class="section">
+          <div class="section-header">
+            <i class="i-lucide-pen-tool section-icon" />
+            <span class="section-title">原创角色</span>
+            <span class="section-count">{{ originalChars.length }}</span>
+          </div>
+
+          <!-- 卡片视图 -->
+          <div v-if="viewMode === 'card'" class="char-grid">
+            <div v-for="char in originalChars" :key="char.id" class="char-card">
+              <div class="char-card__header">
+                <div>
+                  <h3 class="char-name">{{ char.name }}</h3>
+                  <p v-if="char.role" class="char-role">{{ char.role }}</p>
+                </div>
+                <div class="char-card__actions">
+                  <AppBadge v-if="char.age" variant="muted">{{ char.age }} 岁</AppBadge>
+                  <button class="card-action-btn" title="编辑角色" @click="openEdit(char)">
+                    <i class="i-lucide-pencil" />
+                  </button>
+                  <button class="card-delete-btn" title="删除角色" @click="openDelete(char)">
+                    <i class="i-lucide-trash-2" />
+                  </button>
+                </div>
+              </div>
+              <p v-if="char.personalitySummary" class="char-summary">{{ char.personalitySummary }}</p>
+              <div v-if="char.tags" class="char-tags">
+                <AppBadge
+                  v-for="tag in char.tags.split(',').filter(Boolean)"
+                  :key="tag"
+                  variant="primary"
+                  size="sm"
+                >
+                  {{ tag.trim() }}
+                </AppBadge>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列表视图 -->
+          <table v-else class="char-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>定位</th>
+                <th>年龄</th>
+                <th>标签</th>
+                <th class="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="char in originalChars" :key="char.id">
+                <tr class="char-row" :class="{ 'char-row--expanded': expandedId === char.id }" @click="toggleExpand(char.id)">
+                  <td class="cell-name">{{ char.name }}</td>
+                  <td>{{ char.role ?? '—' }}</td>
+                  <td>{{ char.age ?? '—' }}</td>
+                  <td class="cell-tags">{{ char.tags ?? '—' }}</td>
+                  <td class="col-actions" @click.stop>
+                    <button class="card-action-btn always-visible" title="编辑角色" @click="openEdit(char)">
+                      <i class="i-lucide-pencil" />
+                    </button>
+                    <button class="card-action-btn always-visible" title="删除角色" @click="openDelete(char)">
+                      <i class="i-lucide-trash-2" />
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="expandedId === char.id" class="char-expand-row">
+                  <td colspan="5">
+                    <div class="expand-detail">
+                      <div v-if="char.personalitySummary" class="expand-field"><strong>性格：</strong>{{ char.personalitySummary }}</div>
+                      <div v-if="char.motivation" class="expand-field"><strong>动机：</strong>{{ char.motivation }}</div>
+                      <div v-if="char.speakingStyle" class="expand-field"><strong>说话风格：</strong>{{ char.speakingStyle }}</div>
+                      <div v-if="char.currentState" class="expand-field"><strong>当前状态：</strong>{{ char.currentState }}</div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ── 原著人物分区 ── -->
+        <div v-if="importedChars.length > 0" class="section">
+          <div class="section-header">
+            <i class="i-lucide-book-open section-icon" />
+            <span class="section-title">原著人物</span>
+            <span class="section-count">{{ importedChars.length }}</span>
+          </div>
+
+          <!-- 卡片视图 -->
+          <div v-if="viewMode === 'card'" class="char-grid">
+            <div v-for="char in importedChars" :key="char.id" class="char-card char-card--imported">
+              <div class="char-card__header">
+                <div>
+                  <h3 class="char-name">{{ char.name }}</h3>
+                  <p v-if="char.role" class="char-role">{{ char.role }}</p>
+                </div>
+                <div class="char-card__actions">
+                  <AppBadge v-if="char.age" variant="muted">{{ char.age }} 岁</AppBadge>
+                  <button class="card-action-btn" title="编辑角色" @click="openEdit(char)">
+                    <i class="i-lucide-pencil" />
+                  </button>
+                  <button class="card-delete-btn" title="删除角色" @click="openDelete(char)">
+                    <i class="i-lucide-trash-2" />
+                  </button>
+                </div>
+              </div>
+              <p v-if="char.personalitySummary" class="char-summary">{{ char.personalitySummary }}</p>
+              <div v-if="char.tags" class="char-tags">
+                <AppBadge
+                  v-for="tag in char.tags.split(',').filter(Boolean)"
+                  :key="tag"
+                  variant="primary"
+                  size="sm"
+                >
+                  {{ tag.trim() }}
+                </AppBadge>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列表视图 -->
+          <table v-else class="char-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>定位</th>
+                <th>年龄</th>
+                <th>标签</th>
+                <th class="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="char in importedChars" :key="char.id">
+                <tr class="char-row" :class="{ 'char-row--expanded': expandedId === char.id }" @click="toggleExpand(char.id)">
+                  <td class="cell-name">{{ char.name }}</td>
+                  <td>{{ char.role ?? '—' }}</td>
+                  <td>{{ char.age ?? '—' }}</td>
+                  <td class="cell-tags">{{ char.tags ?? '—' }}</td>
+                  <td class="col-actions" @click.stop>
+                    <button class="card-action-btn always-visible" title="编辑角色" @click="openEdit(char)">
+                      <i class="i-lucide-pencil" />
+                    </button>
+                    <button class="card-action-btn always-visible" title="删除角色" @click="openDelete(char)">
+                      <i class="i-lucide-trash-2" />
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="expandedId === char.id" class="char-expand-row">
+                  <td colspan="5">
+                    <div class="expand-detail">
+                      <div v-if="char.personalitySummary" class="expand-field"><strong>性格：</strong>{{ char.personalitySummary }}</div>
+                      <div v-if="char.motivation" class="expand-field"><strong>动机：</strong>{{ char.motivation }}</div>
+                      <div v-if="char.speakingStyle" class="expand-field"><strong>说话风格：</strong>{{ char.speakingStyle }}</div>
+                      <div v-if="char.currentState" class="expand-field"><strong>当前状态：</strong>{{ char.currentState }}</div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </template>
 
     <!-- 添加角色抽屉 -->
     <AppDrawer v-model="drawerOpen" title="添加角色" width="520px">
@@ -265,6 +462,120 @@ const {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 8px;
+  font-size: 14px;
+  color: var(--color-text-muted, #999);
+  pointer-events: none;
+}
+
+.search-input {
+  padding: 5px 10px 5px 28px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  width: 220px;
+  outline: none;
+  transition: border-color 0.15s;
+  background: var(--color-bg, #fff);
+}
+
+.search-input:focus {
+  border-color: var(--color-primary, #7c3aed);
+}
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 30px;
+  border: none;
+  background: var(--color-bg, #fff);
+  cursor: pointer;
+  color: var(--color-text-muted, #999);
+  font-size: 15px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.view-toggle-btn + .view-toggle-btn {
+  border-left: 1px solid var(--color-border, #ddd);
+}
+
+.view-toggle-btn.active {
+  background: var(--color-primary, #7c3aed);
+  color: #fff;
+}
+
+.view-toggle-btn:not(.active):hover {
+  background: var(--color-bg-muted, #f5f5f5);
+}
+
+.empty {
+  text-align: center;
+  color: var(--color-text-muted, #888);
+  padding: 32px;
+  font-size: 14px;
+}
+
+/* ── 分区 ── */
+.section {
+  margin-bottom: 24px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border, #eee);
+}
+
+.section-icon {
+  font-size: 16px;
+  color: var(--color-primary, #7c3aed);
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.section-count {
+  font-size: 12px;
+  color: var(--color-text-muted, #999);
+  background: var(--color-bg-muted, #f5f5f5);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* ── 原著人物卡片边饰 ── */
+.char-card--imported {
+  border-left: 3px solid var(--color-accent, #f59e0b);
 }
 
 .agent-launcher-block {
@@ -463,5 +774,90 @@ const {
   color: var(--color-text-muted);
   margin: 0;
   line-height: 1.5;
+}
+
+/* ── 列表视图表格 ── */
+.char-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-bg-surface, #fff);
+  border: 1px solid var(--color-border, #eee);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.char-table th,
+.char-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border, #eee);
+  text-align: left;
+  font-size: 13px;
+}
+
+.char-table th {
+  background: var(--surface-2, #f9f9fb);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--color-text-secondary, #666);
+  white-space: nowrap;
+}
+
+.char-row {
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.char-row:hover {
+  background: var(--color-bg-muted, #f9f9fb);
+}
+
+.char-row--expanded {
+  background: var(--color-bg-muted, #f5f5f5);
+}
+
+.cell-name {
+  font-weight: 600;
+}
+
+.cell-tags {
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted, #888);
+}
+
+.col-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.always-visible {
+  opacity: 1 !important;
+}
+
+.char-expand-row td {
+  padding: 0;
+  border-bottom: 1px solid var(--color-border, #eee);
+}
+
+.expand-detail {
+  padding: 10px 16px 14px;
+  background: var(--color-bg-muted, #fafafa);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.expand-field {
+  font-size: 13px;
+  color: var(--color-text-secondary, #555);
+  line-height: 1.6;
+}
+
+.expand-field strong {
+  color: var(--color-text-primary);
+  margin-right: 4px;
 }
 </style>

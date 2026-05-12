@@ -11,6 +11,7 @@ import AppButton from '@/components/base/AppButton.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppModal from '@/components/base/AppModal.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 import AgentLauncher from '@/components/base/AgentLauncher.vue'
 import {
   getPlotThreads,
@@ -19,6 +20,7 @@ import {
   deletePlotThread,
   type PlotThreadResponse,
   type PlotThreadStatus,
+  type PlotThreadVisibility,
   type UpsertPlotThreadRequest,
 } from '@/api/plotThreads'
 import { getChapters } from '@/api/chapters'
@@ -32,6 +34,16 @@ const threads = ref<PlotThreadResponse[]>([])
 const loading = ref(false)
 const maxChapterNumber = ref(0)
 
+// ── 视图切换 & 搜索 ──
+const viewMode = ref<'kanban' | 'table'>('kanban')
+const searchQuery = ref('')
+
+const VISIBILITY_OPTIONS: { value: PlotThreadVisibility; label: string; icon: string; tip: string }[] = [
+  { value: 'ThisOutline', label: '番外局部', icon: 'i-lucide-box', tip: '仅在埋设它的批次内可见' },
+  { value: 'Chain', label: '同链追踪', icon: 'i-lucide-link', tip: '在同一故事链的所有批次内可见（默认）' },
+  { value: 'Project', label: '全书谜题', icon: 'i-lucide-globe', tip: '在整个项目内跨故事线可见' },
+]
+
 const STATUS_COLUMNS: { key: PlotThreadStatus; title: string; icon: string }[] = [
   { key: 'Introduced', title: '已埋伏', icon: 'i-lucide-sprout' },
   { key: 'Active', title: '推进中', icon: 'i-lucide-flame' },
@@ -39,8 +51,23 @@ const STATUS_COLUMNS: { key: PlotThreadStatus; title: string; icon: string }[] =
   { key: 'Abandoned', title: '已放弃', icon: 'i-lucide-archive' },
 ]
 
+const filteredThreads = computed(() => {
+  if (!searchQuery.value.trim()) return threads.value
+  const q = searchQuery.value.trim().toLowerCase()
+  return threads.value.filter(
+    (t) =>
+      t.title.toLowerCase().includes(q) ||
+      (t.description ?? '').toLowerCase().includes(q) ||
+      (t.tags ?? '').toLowerCase().includes(q),
+  )
+})
+
 function listByStatus(s: PlotThreadStatus) {
-  return threads.value.filter((t) => t.status === s)
+  return filteredThreads.value.filter((t) => t.status === s)
+}
+
+function statusLabel(s: string) {
+  return STATUS_COLUMNS.find((c) => c.key === s)?.title ?? s
 }
 
 // ── D4-1 过期提醒：状态为 Introduced/Active，且预期回收章号已被当前最新章号越过 ──
@@ -75,7 +102,7 @@ const form = ref<UpsertPlotThreadRequest>({ title: '' })
 
 function openCreate() {
   editing.value = null
-  form.value = { title: '', description: '', importance: 'Medium', status: 'Introduced' }
+  form.value = { title: '', description: '', importance: 'Medium', status: 'Introduced', visibility: 'Chain' }
   modalOpen.value = true
 }
 
@@ -91,6 +118,7 @@ function openEdit(t: PlotThreadResponse) {
     plantedInChapterId: t.plantedInChapterId,
     resolvedInChapterId: t.resolvedInChapterId,
     relatedCharacterIds: t.relatedCharacterIds,
+    visibility: t.visibility ?? 'Chain',
   }
   modalOpen.value = true
 }
@@ -122,6 +150,7 @@ async function changeStatus(t: PlotThreadResponse, s: PlotThreadStatus) {
     relatedCharacterIds: t.relatedCharacterIds,
     expectedResolveByChapterNumber: t.expectedResolveByChapterNumber,
     tags: t.tags,
+    visibility: t.visibility,
   })
   toast.success('状态已更新')
   refresh()
@@ -138,10 +167,39 @@ async function removeOne(t: PlotThreadResponse) {
   <div class="page">
     <div class="page__header">
       <h2 class="page__title">伏笔追踪</h2>
-      <AppButton @click="openCreate">
-        <i class="i-lucide-plus" />
-        新增线索
-      </AppButton>
+      <div class="header-actions">
+        <div class="search-box">
+          <i class="i-lucide-search search-icon" />
+          <input
+            v-model="searchQuery"
+            class="search-input"
+            type="text"
+            placeholder="搜索伏笔…"
+          />
+        </div>
+        <div class="view-toggle">
+          <button
+            class="view-toggle-btn"
+            :class="{ active: viewMode === 'kanban' }"
+            title="看板视图"
+            @click="viewMode = 'kanban'"
+          >
+            <i class="i-lucide-kanban" />
+          </button>
+          <button
+            class="view-toggle-btn"
+            :class="{ active: viewMode === 'table' }"
+            title="表格视图"
+            @click="viewMode = 'table'"
+          >
+            <i class="i-lucide-table-2" />
+          </button>
+        </div>
+        <AppButton @click="openCreate">
+          <i class="i-lucide-plus" />
+          新增线索
+        </AppButton>
+      </div>
     </div>
 
     <AgentLauncher
@@ -165,7 +223,8 @@ async function removeOne(t: PlotThreadResponse) {
       </div>
     </div>
 
-    <div class="kanban">
+    <!-- ═══ 看板视图 ═══ -->
+    <div v-if="viewMode === 'kanban'" class="kanban">
       <div v-for="col in STATUS_COLUMNS" :key="col.key" class="kanban-col">
         <div class="kanban-head">
           <i :class="col.icon" />
@@ -186,6 +245,10 @@ async function removeOne(t: PlotThreadResponse) {
               <span v-if="t.importance" class="card-importance" :class="`imp-${t.importance.toLowerCase()}`">
                 {{ t.importance }}
               </span>
+              <span v-if="t.visibility && t.visibility !== 'Chain'" class="card-visibility" :class="`vis-${t.visibility.toLowerCase()}`" :title="VISIBILITY_OPTIONS.find(v => v.value === t.visibility)?.tip">
+                <i :class="VISIBILITY_OPTIONS.find(v => v.value === t.visibility)?.icon" />
+                {{ VISIBILITY_OPTIONS.find(v => v.value === t.visibility)?.label }}
+              </span>
               <span v-if="isStale(t)" class="card-stale" title="预期回收章号已超过当前最新章号">
                 <i class="i-lucide-alert-triangle" /> 过期
               </span>
@@ -195,13 +258,13 @@ async function removeOne(t: PlotThreadResponse) {
               预期回收于第 {{ t.expectedResolveByChapterNumber }} 章
             </div>
             <div class="card-actions">
-              <select
-                class="status-select"
-                :value="t.status"
-                @change="changeStatus(t, ($event.target as HTMLSelectElement).value as PlotThreadStatus)"
-              >
-                <option v-for="c in STATUS_COLUMNS" :key="c.key" :value="c.key">{{ c.title }}</option>
-              </select>
+              <AppSelect
+                :model-value="t.status"
+                :options="STATUS_COLUMNS.map(c => ({ value: c.key, label: c.title }))"
+                :searchable="false"
+                class="inline-status-select"
+                @update:model-value="changeStatus(t, $event as PlotThreadStatus)"
+              />
               <AppButton variant="ghost" size="sm" @click="openEdit(t)">编辑</AppButton>
               <AppButton variant="ghost" size="sm" @click="removeOne(t)">
                 <i class="i-lucide-trash-2" />
@@ -212,26 +275,93 @@ async function removeOne(t: PlotThreadResponse) {
       </div>
     </div>
 
+    <!-- ═══ 表格视图 ═══ -->
+    <AppCard v-else class="table-card">
+      <div v-if="loading" class="loading">加载中...</div>
+      <div v-else-if="filteredThreads.length === 0" class="empty">
+        {{ searchQuery.trim() ? '无匹配结果' : '暂无伏笔线索' }}
+      </div>
+      <table v-else class="thread-table">
+        <thead>
+          <tr>
+            <th>标题</th>
+            <th>描述</th>
+            <th>重要度</th>
+            <th>状态</th>
+            <th>可见性</th>
+            <th>预期回收章</th>
+            <th>标签</th>
+            <th class="col-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="t in filteredThreads"
+            :key="t.id"
+            :class="{ 'row-stale': isStale(t) }"
+          >
+            <td class="cell-title">{{ t.title }}</td>
+            <td class="cell-desc">{{ t.description ?? '—' }}</td>
+            <td>
+              <span v-if="t.importance" class="card-importance" :class="`imp-${t.importance.toLowerCase()}`">
+                {{ t.importance }}
+              </span>
+            </td>
+            <td>
+              <AppSelect
+                :model-value="t.status"
+                :options="STATUS_COLUMNS.map(c => ({ value: c.key, label: c.title }))"
+                :searchable="false"
+                class="inline-status-select"
+                @update:model-value="changeStatus(t, $event as PlotThreadStatus)"
+              />
+            </td>
+            <td>
+              <span v-if="t.visibility" class="card-visibility" :class="`vis-${t.visibility.toLowerCase()}`" :title="VISIBILITY_OPTIONS.find(v => v.value === t.visibility)?.tip">
+                {{ VISIBILITY_OPTIONS.find(v => v.value === t.visibility)?.label }}
+              </span>
+            </td>
+            <td>{{ t.expectedResolveByChapterNumber ?? '—' }}</td>
+            <td class="cell-tags">{{ t.tags ?? '—' }}</td>
+            <td class="col-actions">
+              <AppButton variant="ghost" size="sm" @click="openEdit(t)">编辑</AppButton>
+              <AppButton variant="ghost" size="sm" @click="removeOne(t)">
+                <i class="i-lucide-trash-2" />
+              </AppButton>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </AppCard>
+
     <AppModal v-model="modalOpen" :title="editing ? '编辑线索' : '新增线索'">
       <div class="form-fields">
         <AppInput v-model="form.title" label="标题 *" />
         <AppTextarea v-model="form.description" label="描述" :rows="4" />
         <div class="form-row">
-          <label class="field">
-            <span class="field-label">重要度</span>
-            <select v-model="form.importance" class="field-select">
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
-            </select>
-          </label>
-          <label class="field">
-            <span class="field-label">状态</span>
-            <select v-model="form.status" class="field-select">
-              <option v-for="c in STATUS_COLUMNS" :key="c.key" :value="c.key">{{ c.title }}</option>
-            </select>
-          </label>
+          <AppSelect
+            v-model="form.importance"
+            label="重要度"
+            :searchable="false"
+            :options="[
+              { value: 'High', label: 'High' },
+              { value: 'Medium', label: 'Medium' },
+              { value: 'Low', label: 'Low' },
+            ]"
+          />
+          <AppSelect
+            v-model="form.status"
+            label="状态"
+            :searchable="false"
+            :options="STATUS_COLUMNS.map(c => ({ value: c.key, label: c.title }))"
+          />
         </div>
+        <AppSelect
+          v-model="form.visibility"
+          label="可见性范围"
+          :searchable="false"
+          :options="VISIBILITY_OPTIONS.map(v => ({ value: v.value, label: v.label + ' — ' + v.tip }))"
+        />
         <AppInput v-model="form.tags" label="标签（逗号分隔）" />
         <label class="field">
           <span class="field-label">预期回收章号（可选）</span>
@@ -270,6 +400,75 @@ async function removeOne(t: PlotThreadResponse) {
   font-size: 22px;
   font-weight: 600;
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 8px;
+  font-size: 14px;
+  color: var(--color-text-muted, #999);
+  pointer-events: none;
+}
+
+.search-input {
+  padding: 5px 10px 5px 28px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  width: 200px;
+  outline: none;
+  transition: border-color 0.15s;
+  background: var(--color-bg, #fff);
+}
+
+.search-input:focus {
+  border-color: var(--color-primary, #7c3aed);
+}
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 30px;
+  border: none;
+  background: var(--color-bg, #fff);
+  cursor: pointer;
+  color: var(--color-text-muted, #999);
+  font-size: 15px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.view-toggle-btn + .view-toggle-btn {
+  border-left: 1px solid var(--color-border, #ddd);
+}
+
+.view-toggle-btn.active {
+  background: var(--color-primary, #7c3aed);
+  color: #fff;
+}
+
+.view-toggle-btn:not(.active):hover {
+  background: var(--color-bg-muted, #f5f5f5);
 }
 
 .kanban {
@@ -385,6 +584,25 @@ async function removeOne(t: PlotThreadResponse) {
   border-radius: 4px;
 }
 
+.card-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.vis-thisoutline {
+  background: rgba(99, 102, 241, 0.12);
+  color: rgb(67, 56, 202);
+}
+
+.vis-project {
+  background: rgba(16, 185, 129, 0.12);
+  color: rgb(4, 120, 87);
+}
+
 .imp-high {
   background: rgba(220, 38, 38, 0.15);
   color: rgb(185, 28, 28);
@@ -416,13 +634,9 @@ async function removeOne(t: PlotThreadResponse) {
   align-items: center;
 }
 
-.status-select,
-.field-select {
-  padding: 4px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  font-size: 12px;
-  background: var(--color-bg);
+.inline-status-select {
+  min-width: 100px;
+  max-width: 140px;
 }
 
 .form-fields {
@@ -447,5 +661,63 @@ async function removeOne(t: PlotThreadResponse) {
 .field-label {
   font-size: 12px;
   color: var(--color-text-secondary);
+}
+
+/* ── 表格视图 ── */
+.table-card {
+  overflow: auto;
+}
+
+.thread-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.thread-table th,
+.thread-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border, #eee);
+  text-align: left;
+  font-size: 13px;
+}
+
+.thread-table th {
+  background: var(--surface-2, #f9f9fb);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cell-title {
+  font-weight: 500;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-desc {
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-secondary, #888);
+}
+
+.cell-tags {
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-secondary, #888);
+}
+
+.col-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.row-stale {
+  background: #fffbeb;
 }
 </style>

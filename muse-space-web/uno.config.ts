@@ -85,5 +85,11 @@ export default defineConfig({
     'i-lucide-lock',
     'i-lucide-lock-open',
     'i-lucide-settings',
+    // Mode tab icons (创作页)
+    'i-lucide-book-copy',
+    'i-lucide-text-cursor-input',
+    'i-lucide-star',
+    'i-lucide-layers',
+    'i-lucide-folder-plus',
   ],
 })

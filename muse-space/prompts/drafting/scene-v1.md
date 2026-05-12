@@ -66,6 +66,10 @@ Write a scene draft based on the following information.
 （这些事件已经在过往章节中发生过；本章绝对不允许"再次发生"或"否认其曾发生"）
 {{immutable_facts}}
 
+## 活跃伏笔线索（当前故事线可见范围）
+（以下伏笔已在本故事线中埋设，尚未回收；本章内容可呼应、推进这些线索，但不得意外提前彻底揭示；若本章确实为某线索的回收章，须与 Scene Goal 对应）
+{{active_plot_threads}}
+
 **Style Requirement:**
 {{style_requirement}}
 

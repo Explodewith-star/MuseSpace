@@ -68,6 +68,8 @@ export interface UpdateChapterRequest {
 export interface CharacterResponse {
   id: string
   storyProjectId: string
+  /** null = 原创角色，有值 = 从该原著提取 */
+  sourceNovelId?: string | null
   name: string
   age?: number
   role?: string
@@ -339,6 +341,9 @@ export interface StoryOutlineResponse {
   storyProjectId: string
   name: string
   mode: GenerationMode
+  chainId?: string | null
+  chainIndex: number
+  previousOutlineId?: string | null
   sourceNovelId?: string | null
   sourceRangeStart?: number | null
   sourceRangeEnd?: number | null
@@ -356,6 +361,8 @@ export interface StoryOutlineResponse {
 export interface CreateStoryOutlineRequest {
   name: string
   mode: GenerationMode
+  chainId?: string
+  previousOutlineId?: string
   sourceNovelId?: string
   sourceRangeStart?: number
   sourceRangeEnd?: number
@@ -364,6 +371,22 @@ export interface CreateStoryOutlineRequest {
   divergencePolicy?: DivergencePolicy
   targetChapterCount?: number
   outlineSummary?: string
+}
+
+// ---------- OutlineChain ----------
+export interface OutlineChainResponse {
+  id: string
+  storyProjectId: string
+  name: string
+  mode: GenerationMode
+  displayOrder: number
+  createdAt: string
+  outlineCount: number
+}
+
+export interface CreateOutlineChainRequest {
+  name: string
+  mode: GenerationMode
 }
 
 export interface UpdateStoryOutlineRequest {

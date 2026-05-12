@@ -18,7 +18,6 @@ const sections = [
   { label: '角色', desc: '维护角色卡与人物关系', icon: 'i-lucide-users', to: 'characters' },
   { label: '世界观', desc: '定义世界规则与约束', icon: 'i-lucide-globe', to: 'world-rules' },
   { label: '文风配置', desc: '设定语气基调与写作偏好', icon: 'i-lucide-pen-line', to: 'style-profile' },
-  { label: '草稿生成', desc: 'AI 辅助场景创作', icon: 'i-lucide-sparkles', to: 'draft' },
 ]
 
 const workflowSteps = [

@@ -8,6 +8,7 @@ import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AppModal from '@/components/base/AppModal.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppInput from '@/components/base/AppInput.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 import { getChapters, deleteChapter, batchDeleteChapters } from '@/api/chapters'
 import { getStoryOutlines } from '@/api/outlines'
 import {
@@ -310,11 +311,14 @@ onUnmounted(() => stop())
         <AppBadge v-if="totalChapters > 0" variant="default">{{ totalChapters }} 章</AppBadge>
       </div>
       <div class="header-actions">
-        <select v-if="storyOutlines.length" v-model="selectedOutlineId" class="outline-select">
-          <option v-for="outline in storyOutlines" :key="outline.id" :value="outline.id">
-            {{ outline.name }}
-          </option>
-        </select>
+        <AppSelect
+          v-if="storyOutlines.length"
+          v-model="selectedOutlineId"
+          :options="storyOutlines.map(o => ({ value: o.id, label: o.name }))"
+          :searchable="false"
+          placeholder="选择大纲"
+          class="outline-select"
+        />
         <AppButton variant="ghost" size="sm" @click="loadAll">
           <i class="i-lucide-refresh-cw" />
           刷新
@@ -632,14 +636,7 @@ onUnmounted(() => stop())
 }
 
 .outline-select {
-  height: 32px;
   min-width: 170px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-primary);
-  font-size: 13px;
 }
 
 /* Agent bar */

@@ -44,6 +44,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
     private readonly INovelChunkRepository _novelChunkRepo;
     private readonly INovelRepository _novelRepo;
     private readonly INovelCharacterSnapshotRepository _snapshotRepo;
+    private readonly IPlotThreadRepository _plotThreadRepo;
     private readonly ILogger<StoryContextBuilder> _logger;
 
     public StoryContextBuilder(
@@ -59,6 +60,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         INovelChunkRepository novelChunkRepo,
         INovelRepository novelRepo,
         INovelCharacterSnapshotRepository snapshotRepo,
+        IPlotThreadRepository plotThreadRepo,
         ILogger<StoryContextBuilder> logger)
     {
         _projectRepo = projectRepo;
@@ -73,6 +75,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         _novelChunkRepo = novelChunkRepo;
         _novelRepo = novelRepo;
         _snapshotRepo = snapshotRepo;
+        _plotThreadRepo = plotThreadRepo;
         _logger = logger;
     }
 
@@ -125,7 +128,13 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
             .ToList();
 
         var rules = await _worldRuleRepo.GetByProjectAsync(request.StoryProjectId, cancellationToken);
-        var worldRules = rules
+
+        // 原创模式下，排除从原著提取的世界观规则
+        var filteredRules = request.GenerationMode == GenerationMode.Original
+            ? rules.Where(r => r.SourceNovelId == null).ToList()
+            : rules;
+
+        var worldRules = filteredRules
             .OrderByDescending(r => r.Priority)
             .Take(8)
             .Select(r => $"[{r.Category ?? "通用"}]{(r.IsHardConstraint ? "【强制】" : "")} {r.Title}：{r.Description}")
@@ -187,6 +196,21 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
         // Module E：续写/外传模式上下文
         var modeResult = await GetModeContextAsync(request, cancellationToken);
 
+        // P2-⑨：按作用域过滤活跃伏笔，注入 Prompt
+        List<string> activePlotThreadLines = [];
+        if (currentOutlineId.HasValue)
+        {
+            var visibleThreads = await _plotThreadRepo.GetVisibleToOutlineAsync(
+                request.StoryProjectId,
+                currentOutlineId.Value,
+                currentOutline?.ChainId,
+                cancellationToken);
+            activePlotThreadLines = visibleThreads
+                .Take(10)
+                .Select(t => $"[{t.Importance ?? "Medium"}] {t.Title}：{t.Description ?? ""}")
+                .ToList();
+        }
+
         return new StoryContext
         {
             ProjectSummary = project is not null
@@ -211,6 +235,7 @@ public sealed class StoryContextBuilder : IStoryContextBuilder
             NovelStyleSummary = modeResult.StyleSummary,
             NovelCharacterEndStates = modeResult.CharacterEndStates,
             OutlineSummary = currentOutline is not null ? BuildOutlineSummary(currentOutline) : null,
+            ActivePlotThreads = activePlotThreadLines,
         };
     }
 

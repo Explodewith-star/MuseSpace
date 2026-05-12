@@ -6,6 +6,7 @@ import AppBadge from '@/components/base/AppBadge.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AppModal from '@/components/base/AppModal.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 import { getStoryOutlines } from '@/api/outlines'
 import {
   getSuggestionById,
@@ -229,11 +230,14 @@ onUnmounted(() => {
         </template>
       </div>
       <div class="header-actions">
-        <select v-if="outlines.length" v-model="selectedOutlineId" class="outline-select">
-          <option v-for="outline in outlines" :key="outline.id" :value="outline.id">
-            {{ outline.name }}
-          </option>
-        </select>
+        <AppSelect
+          v-if="outlines.length"
+          v-model="selectedOutlineId"
+          :options="outlines.map(o => ({ value: o.id, label: o.name }))"
+          :searchable="false"
+          placeholder="选择大纲"
+          class="outline-select"
+        />
         <!-- 始终可以重排编号 -->
         <AppButton variant="ghost" size="sm" @click="reorderAll">
           <i class="i-lucide-list-ordered" />
@@ -469,14 +473,7 @@ onUnmounted(() => {
 }
 
 .outline-select {
-  height: 32px;
   min-width: 160px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-bg-input);
-  color: var(--color-text-primary);
-  font-size: 13px;
 }
 
 .resolved-hint {

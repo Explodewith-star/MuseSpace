@@ -72,9 +72,12 @@ public sealed class PlotThreadTrackingJob
 
         try
         {
-            // 1. 收集草稿
+            // 1. 收集草稿，同时确定当前章节所属批次（OutlineId）及故事链（ChainId）
             string draftText;
             Guid? plantedAnchor = chapterId;
+            Guid? currentOutlineId = null;
+            Guid? currentChainId = null;
+
             if (chapterId is not null)
             {
                 var ch = await _chapterRepo.GetByIdAsync(projectId, chapterId.Value);
@@ -84,6 +87,13 @@ public sealed class PlotThreadTrackingJob
                     return;
                 }
                 draftText = $"【第{ch.Number}章 {ch.Title}】\n{ch.DraftText}";
+                currentOutlineId = ch.StoryOutlineId;
+                if (currentOutlineId.HasValue)
+                {
+                    var outline = await _db.StoryOutlines.AsNoTracking()
+                        .FirstOrDefaultAsync(o => o.Id == currentOutlineId.Value);
+                    currentChainId = outline?.ChainId;
+                }
             }
             else
             {
@@ -154,6 +164,10 @@ public sealed class PlotThreadTrackingJob
                     Importance = string.IsNullOrWhiteSpace(n.Importance) ? "Medium" : n.Importance,
                     Status = ForeshadowingStatus.Introduced,
                     PlantedInChapterId = plantedAnchor,
+                    // 作用域：自动从当前章节批次推导，默认 Chain 级
+                    OutlineId = currentOutlineId,
+                    ChainId = currentChainId,
+                    Visibility = PlotThreadVisibility.Chain,
                 });
                 created++;
             }
@@ -167,8 +181,13 @@ public sealed class PlotThreadTrackingJob
                 if (Enum.TryParse<ForeshadowingStatus>(u.NewStatus, true, out var ns))
                 {
                     item.Status = ns;
-                    if (ns == ForeshadowingStatus.PaidOff && plantedAnchor is not null)
-                        item.ResolvedInChapterId = plantedAnchor;
+                    if (ns == ForeshadowingStatus.PaidOff)
+                    {
+                        if (plantedAnchor is not null)
+                            item.ResolvedInChapterId = plantedAnchor;
+                        if (currentOutlineId is not null)
+                            item.ResolvedInOutlineId = currentOutlineId;
+                    }
                     await _threadRepo.UpdateAsync(item);
                     updated++;
                 }

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MuseSpace.Domain.Entities;
+using MuseSpace.Domain.Enums;
 using MuseSpace.Infrastructure.Persistence.Entities;
 
 namespace MuseSpace.Infrastructure.Persistence;
@@ -17,6 +18,7 @@ public class MuseSpaceDbContext : DbContext
     public DbSet<StyleProfile> StyleProfiles => Set<StyleProfile>();
     public DbSet<WorldRule> WorldRules => Set<WorldRule>();
     public DbSet<PlotThread> PlotThreads => Set<PlotThread>();
+    public DbSet<OutlineChain> OutlineChains => Set<OutlineChain>();
     public DbSet<ChapterEvent> ChapterEvents => Set<ChapterEvent>();
     public DbSet<CanonFact> CanonFacts => Set<CanonFact>();
     public DbSet<GenerationRecord> GenerationRecords => Set<GenerationRecord>();
@@ -82,6 +84,22 @@ public class MuseSpaceDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Novel>().WithMany().HasForeignKey(e => e.SourceNovelId)
                   .OnDelete(DeleteBehavior.SetNull);
+            entity.Property(e => e.ChainId).IsRequired(false);
+            entity.Property(e => e.PreviousOutlineId).IsRequired(false);
+            entity.HasOne<OutlineChain>().WithMany().HasForeignKey(e => e.ChainId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ── OutlineChain ─────────────────────────────────────────────────────
+        modelBuilder.Entity<OutlineChain>(entity =>
+        {
+            entity.ToTable("outline_chains");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(300).IsRequired();
+            entity.Property(e => e.Mode).HasConversion<int>();
+            entity.HasIndex(e => e.StoryProjectId);
+            entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── Chapter ──────────────────────────────────────────────────────────
@@ -171,6 +189,7 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.Title).HasMaxLength(500).IsRequired();
             entity.Property(e => e.Category).HasMaxLength(200);
             entity.Property(e => e.Description).HasColumnType("text");
+            entity.Property(e => e.SourceNovelId).IsRequired(false);
             entity.HasIndex(e => e.StoryProjectId);
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
                   .OnDelete(DeleteBehavior.Cascade);
@@ -324,8 +343,10 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.RelatedCharacterIds).HasColumnType("uuid[]").IsRequired(false);
             entity.Property(e => e.Tags).HasMaxLength(500);
+            entity.Property(e => e.Visibility).HasConversion<int>().HasDefaultValue(PlotThreadVisibility.Chain).HasSentinel(PlotThreadVisibility.Chain);
             entity.HasIndex(e => e.StoryProjectId);
             entity.HasIndex(e => new { e.StoryProjectId, e.Status });
+            entity.HasIndex(e => new { e.StoryProjectId, e.ChainId });
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
                   .OnDelete(DeleteBehavior.Cascade);
         });

@@ -1,6 +1,7 @@
 import request from './http'
 
 export type PlotThreadStatus = 'Introduced' | 'Active' | 'PaidOff' | 'Abandoned'
+export type PlotThreadVisibility = 'ThisOutline' | 'Chain' | 'Project'
 
 export interface PlotThreadResponse {
   id: string
@@ -15,6 +16,9 @@ export interface PlotThreadResponse {
   /** 预期回收于第几章。当当前最新章号 > 本值且状态为 Introduced/Active 时视为过期。 */
   expectedResolveByChapterNumber?: number
   tags?: string
+  outlineId?: string
+  chainId?: string
+  visibility: PlotThreadVisibility
   createdAt: string
   updatedAt: string
 }
@@ -29,6 +33,8 @@ export interface UpsertPlotThreadRequest {
   relatedCharacterIds?: string[]
   expectedResolveByChapterNumber?: number
   tags?: string
+  /** 可见性作用域：ThisOutline（番外局部）/ Chain（同链追踪，默认）/ Project（全书谜题）。 */
+  visibility?: PlotThreadVisibility
 }
 
 export function getPlotThreads(projectId: string): Promise<PlotThreadResponse[]> {

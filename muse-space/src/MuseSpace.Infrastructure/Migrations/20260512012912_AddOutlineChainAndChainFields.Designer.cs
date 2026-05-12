@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MuseSpace.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -13,9 +14,11 @@ using Pgvector;
 namespace MuseSpace.Infrastructure.Migrations
 {
     [DbContext(typeof(MuseSpaceDbContext))]
-    partial class MuseSpaceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260512012912_AddOutlineChainAndChainFields")]
+    partial class AddOutlineChainAndChainFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -826,9 +829,6 @@ namespace MuseSpace.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("ChainId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -842,9 +842,6 @@ namespace MuseSpace.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<Guid?>("OutlineId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid?>("PlantedInChapterId")
                         .HasColumnType("uuid");
 
@@ -852,9 +849,6 @@ namespace MuseSpace.Infrastructure.Migrations
                         .HasColumnType("uuid[]");
 
                     b.Property<Guid?>("ResolvedInChapterId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("ResolvedInOutlineId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Status")
@@ -875,16 +869,9 @@ namespace MuseSpace.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("Visibility")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
                     b.HasKey("Id");
 
                     b.HasIndex("StoryProjectId");
-
-                    b.HasIndex("StoryProjectId", "ChainId");
 
                     b.HasIndex("StoryProjectId", "Status");
 

@@ -44,10 +44,20 @@ const FACT_TYPE_OPTIONS = [
 const filterType = ref('')
 const onlyActive = ref(true)
 const onlyLocked = ref(false)
+const searchQuery = ref('')
 
 const filtered = computed(() => {
   let list = facts.value
   if (filterType.value) list = list.filter((f) => f.factType === filterType.value)
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.trim().toLowerCase()
+    list = list.filter(
+      (f) =>
+        f.factKey.toLowerCase().includes(q) ||
+        f.factValue.toLowerCase().includes(q) ||
+        (f.notes ?? '').toLowerCase().includes(q),
+    )
+  }
   return list
 })
 
@@ -148,14 +158,23 @@ function factTypeLabel(t: string): string {
 
     <AppCard class="filter-bar">
       <div class="filter-row">
-        <label class="filter-item">
-          类型
-          <select v-model="filterType" class="filter-select">
-            <option v-for="o in FACT_TYPE_OPTIONS" :key="o.value" :value="o.value">
-              {{ o.label }}
-            </option>
-          </select>
-        </label>
+        <div class="search-box">
+          <i class="i-lucide-search search-icon" />
+          <input
+            v-model="searchQuery"
+            class="search-input"
+            type="text"
+            placeholder="搜索 Key / Value / 备注…"
+          />
+        </div>
+        <AppSelect
+          v-model="filterType"
+          label="类型"
+          :options="FACT_TYPE_OPTIONS"
+          :searchable="false"
+          placeholder="全部类型"
+          class="filter-type-select"
+        />
         <label class="filter-item">
           <input v-model="onlyActive" type="checkbox" @change="refresh" />
           仅显示活跃（未失效）
@@ -164,6 +183,9 @@ function factTypeLabel(t: string): string {
           <input v-model="onlyLocked" type="checkbox" @change="refresh" />
           仅显示已锁定
         </label>
+        <span v-if="filtered.length !== facts.length" class="filter-count">
+          {{ filtered.length }} / {{ facts.length }} 条
+        </span>
       </div>
     </AppCard>
 
@@ -292,10 +314,37 @@ function factTypeLabel(t: string): string {
   gap: 6px;
   font-size: 13px;
 }
-.filter-select {
-  padding: 4px 8px;
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-icon {
+  position: absolute;
+  left: 8px;
+  font-size: 14px;
+  color: var(--color-text-muted, #999);
+  pointer-events: none;
+}
+.search-input {
+  padding: 5px 10px 5px 28px;
   border: 1px solid var(--border-color, #ddd);
-  border-radius: 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  width: 220px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.search-input:focus {
+  border-color: var(--color-primary, #7c3aed);
+}
+.filter-type-select {
+  min-width: 120px;
+}
+.filter-count {
+  font-size: 12px;
+  color: var(--color-text-muted, #999);
+  margin-left: auto;
 }
 .fact-table {
   width: 100%;

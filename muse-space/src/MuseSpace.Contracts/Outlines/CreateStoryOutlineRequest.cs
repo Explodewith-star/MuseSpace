@@ -4,6 +4,8 @@ public sealed class CreateStoryOutlineRequest
 {
     public string Name { get; init; } = string.Empty;
     public string Mode { get; init; } = "Original";
+    public Guid? ChainId { get; init; }
+    public Guid? PreviousOutlineId { get; init; }
     public Guid? SourceNovelId { get; init; }
     public int? SourceRangeStart { get; init; }
     public int? SourceRangeEnd { get; init; }

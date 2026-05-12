@@ -28,6 +28,7 @@ public sealed class WorldRuleSuggestionApplier : ISuggestionApplier
         {
             Id = suggestion.TargetEntityId ?? Guid.NewGuid(),
             StoryProjectId = suggestion.StoryProjectId,
+            SourceNovelId = suggestion.SourceNovelId,
             Title = data.Title ?? "未命名规则",
             Category = data.Category,
             Description = data.Description,

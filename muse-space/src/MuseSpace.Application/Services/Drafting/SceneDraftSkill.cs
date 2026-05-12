@@ -114,6 +114,10 @@ public sealed class SceneDraftSkill : ISkill
                     request.Parameters.GetValueOrDefault("BranchTopic"),
                     storyContext.BranchContextSnippets),
                 ["divergence_policy"] = storyContext.DivergencePolicyNote ?? string.Empty,
+                // P2-⑨ 伏笔作用域
+                ["active_plot_threads"] = storyContext.ActivePlotThreads.Count > 0
+                    ? string.Join("\n", storyContext.ActivePlotThreads)
+                    : string.Empty,
             };
 
             // 4. Render prompts

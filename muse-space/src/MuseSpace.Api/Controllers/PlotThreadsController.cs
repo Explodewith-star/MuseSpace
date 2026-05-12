@@ -53,6 +53,7 @@ public class PlotThreadsController : ControllerBase
             RelatedCharacterIds = req.RelatedCharacterIds,
             ExpectedResolveByChapterNumber = req.ExpectedResolveByChapterNumber,
             Tags = req.Tags,
+            Visibility = ParseVisibility(req.Visibility, PlotThreadVisibility.Chain),
         };
         var saved = await _repo.AddAsync(thread, ct);
         return Ok(ApiResponse<PlotThreadResponse>.Ok(ToResp(saved)));
@@ -74,6 +75,8 @@ public class PlotThreadsController : ControllerBase
         item.RelatedCharacterIds = req.RelatedCharacterIds;
         item.ExpectedResolveByChapterNumber = req.ExpectedResolveByChapterNumber;
         item.Tags = req.Tags;
+        if (req.Visibility is not null)
+            item.Visibility = ParseVisibility(req.Visibility, item.Visibility);
 
         await _repo.UpdateAsync(item, ct);
         return Ok(ApiResponse<PlotThreadResponse>.Ok(ToResp(item)));
@@ -90,6 +93,9 @@ public class PlotThreadsController : ControllerBase
     private static ForeshadowingStatus ParseStatus(string? raw, ForeshadowingStatus fallback)
         => Enum.TryParse<ForeshadowingStatus>(raw, true, out var s) ? s : fallback;
 
+    private static PlotThreadVisibility ParseVisibility(string? raw, PlotThreadVisibility fallback)
+        => Enum.TryParse<PlotThreadVisibility>(raw, true, out var v) ? v : fallback;
+
     private static PlotThreadResponse ToResp(PlotThread t) => new()
     {
         Id = t.Id,
@@ -103,6 +109,10 @@ public class PlotThreadsController : ControllerBase
         RelatedCharacterIds = t.RelatedCharacterIds,
         ExpectedResolveByChapterNumber = t.ExpectedResolveByChapterNumber,
         Tags = t.Tags,
+        OutlineId = t.OutlineId,
+        ChainId = t.ChainId,
+        Visibility = t.Visibility.ToString(),
+        ResolvedInOutlineId = t.ResolvedInOutlineId,
         CreatedAt = t.CreatedAt,
         UpdatedAt = t.UpdatedAt,
     };

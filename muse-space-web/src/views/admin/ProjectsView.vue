@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { getAdminProjects, assignProject, deleteAdminProject, getUsers } from '@/api/auth'
 import type { AdminProject, UserResponse } from '@/api/auth'
+import AppSelect from '@/components/base/AppSelect.vue'
 import { useToast } from '@/composables/useToast'
 
 const toast = useToast()
@@ -67,17 +68,12 @@ onMounted(fetchData)
 
           <!-- 分配下拉 -->
           <div>
-            <select
-              :value="project.userId ?? ''"
-              class="text-xs px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg-base)]
-                     text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]"
-              @change="handleAssign(project, ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">游客共享</option>
-              <option v-for="u in users" :key="u.id" :value="u.id">
-                {{ u.phoneNumber }}
-              </option>
-            </select>
+            <AppSelect
+              :model-value="project.userId ?? ''"
+              :options="[{ value: '', label: '游客共享' }, ...users.map(u => ({ value: u.id, label: u.phoneNumber }))]"
+              :searchable="false"
+              @update:model-value="handleAssign(project, $event)"
+            />
           </div>
 
           <div>

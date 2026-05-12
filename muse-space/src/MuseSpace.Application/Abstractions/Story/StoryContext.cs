@@ -57,4 +57,12 @@ public class StoryContext
 
     /// <summary>当前章节所属大纲摘要，用于追溯生成边界。</summary>
     public string? OutlineSummary { get; init; }
+
+    // ── P2-⑨ 伏笔作用域注入 ────────────────────────────────────────────────
+
+    /// <summary>
+    /// 当前批次可见的活跃伏笔列表（依据 Visibility + ChainId/OutlineId 过滤后的结果）。
+    /// 格式："[重要度] 标题：描述"。用于 Prompt 中伏笔追踪提示段落。
+    /// </summary>
+    public List<string> ActivePlotThreads { get; init; } = [];
 }
