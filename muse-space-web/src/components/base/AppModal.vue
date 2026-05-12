@@ -4,10 +4,12 @@ interface Props {
   title?: string
   width?: string
   closable?: boolean
+  closeOnOverlay?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
   closable: true,
+  closeOnOverlay: false,
   width: '520px',
 })
 
@@ -23,7 +25,7 @@ function close() {
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="modelValue" class="app-modal-overlay" @click.self="closable && close()">
+      <div v-if="modelValue" class="app-modal-overlay" @click.self="closable && closeOnOverlay && close()">
         <div class="app-modal" :style="{ width }">
           <div class="app-modal__header">
             <span class="app-modal__title">{{ title }}</span>

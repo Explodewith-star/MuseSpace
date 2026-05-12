@@ -5,6 +5,7 @@ import {
   presetIcons,
   transformerDirectives,
 } from 'unocss'
+import { icons as lucideIcons } from '@iconify-json/lucide'
 
 export default defineConfig({
   presets: [
@@ -13,6 +14,9 @@ export default defineConfig({
     presetIcons({
       scale: 1.2,
       warn: true,
+      collections: {
+        lucide: () => lucideIcons,
+      },
       extraProperties: {
         'display': 'inline-block',
       },
@@ -53,6 +57,7 @@ export default defineConfig({
     'i-lucide-undo-2',
     'i-lucide-rotate-ccw',
     'i-lucide-refresh-cw',
+    'i-lucide-search',
     'i-lucide-send',
     'i-lucide-download',
     'i-lucide-arrow-right',
@@ -62,6 +67,8 @@ export default defineConfig({
     'i-lucide-triangle-alert',
     'i-lucide-quote',
     'i-lucide-bookmark',
+    'i-lucide-archive',
+    'i-lucide-circle-check',
     // Suggestion category icons
     'i-lucide-user-check',
     'i-lucide-pen-tool',
@@ -83,6 +90,7 @@ export default defineConfig({
     'i-lucide-toggle-right',
     'i-lucide-activity',
     'i-lucide-lock',
+    'i-lucide-unlock',
     'i-lucide-lock-open',
     'i-lucide-settings',
     // Mode tab icons (创作页)

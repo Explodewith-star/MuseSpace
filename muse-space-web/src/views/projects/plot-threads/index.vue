@@ -66,10 +66,6 @@ function listByStatus(s: PlotThreadStatus) {
   return filteredThreads.value.filter((t) => t.status === s)
 }
 
-function statusLabel(s: string) {
-  return STATUS_COLUMNS.find((c) => c.key === s)?.title ?? s
-}
-
 // ── D4-1 过期提醒：状态为 Introduced/Active，且预期回收章号已被当前最新章号越过 ──
 function isStale(t: PlotThreadResponse): boolean {
   if (t.status !== 'Introduced' && t.status !== 'Active') return false

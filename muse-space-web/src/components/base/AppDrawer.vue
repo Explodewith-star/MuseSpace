@@ -3,10 +3,12 @@ interface Props {
   modelValue: boolean
   title?: string
   width?: string
+  closeOnOverlay?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
   width: '480px',
+  closeOnOverlay: false,
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
@@ -19,7 +21,7 @@ function close() {
 <template>
   <Teleport to="body">
     <Transition name="drawer">
-      <div v-if="modelValue" class="drawer-overlay" @click.self="close">
+      <div v-if="modelValue" class="drawer-overlay" @click.self="closeOnOverlay && close()">
         <div class="drawer-panel" :style="{ width }">
           <div class="drawer-header">
             <span class="drawer-title">{{ title }}</span>
