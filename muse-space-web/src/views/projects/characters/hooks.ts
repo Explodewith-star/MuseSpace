@@ -1,6 +1,6 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCharacters, createCharacter, updateCharacter, deleteCharacter, extractCharacterFromNovel } from '@/api/characters'
+import { getCharacters, createCharacter, updateCharacter, deleteCharacter, generateCharacter } from '@/api/characters'
 import { useToast } from '@/composables/useToast'
 import type { CharacterResponse } from '@/types/models'
 import type { CreateCharacterForm } from './types'
@@ -9,6 +9,7 @@ const emptyForm = (): CreateCharacterForm => ({
   name: '',
   age: '',
   role: '',
+  category: '',
   personalitySummary: '',
   motivation: '',
   speakingStyle: '',
@@ -31,31 +32,36 @@ export function initCharactersState() {
   const createLoading = ref(false)
   const createForm = reactive<CreateCharacterForm>(emptyForm())
 
-  // AI 提取
-  const extractQuery = ref('')
-  const extractLoading = ref(false)
+  // AI 生成角色（统一入口，支持从原著提取或自由生成）
+  const generateDesc = ref('')
+  const generateFromNovel = ref(false)
+  const generateLoading = ref(false)
 
-  async function extractFromNovel(): Promise<void> {
-    const q = extractQuery.value.trim()
-    if (!q) return
-    extractLoading.value = true
+  async function generateFromDesc(): Promise<void> {
+    const desc = generateDesc.value.trim()
+    if (!desc) return
+    generateLoading.value = true
     try {
-      const result = await extractCharacterFromNovel(projectId, q)
+      const result = await generateCharacter(projectId, desc, generateFromNovel.value)
       Object.assign(createForm, {
         name: result.name ?? '',
         age: result.age != null ? String(result.age) : '',
         role: result.role ?? '',
+        category: result.category ?? '',
         personalitySummary: result.personalitySummary ?? '',
         motivation: result.motivation ?? '',
         speakingStyle: result.speakingStyle ?? '',
         forbiddenBehaviors: result.forbiddenBehaviors ?? '',
         currentState: result.currentState ?? '',
       })
-      toast.success(`已从 ${result.sourceChunkCount} 个原著片段中提取，请检查并确认`)
+      const hint = generateFromNovel.value
+        ? `已从 ${result.sourceChunkCount} 个原著片段中提取，请检查并确认`
+        : 'AI 已生成角色信息，请检查并修改'
+      toast.success(hint)
     } catch {
       // handled by interceptor
     } finally {
-      extractLoading.value = false
+      generateLoading.value = false
     }
   }
 
@@ -86,6 +92,7 @@ export function initCharactersState() {
         name: createForm.name,
         age: createForm.age ? parseInt(createForm.age) : undefined,
         role: createForm.role || undefined,
+        category: createForm.category || undefined,
         personalitySummary: createForm.personalitySummary || undefined,
         motivation: createForm.motivation || undefined,
         speakingStyle: createForm.speakingStyle || undefined,
@@ -132,6 +139,7 @@ export function initCharactersState() {
       name: c.name,
       age: c.age != null ? String(c.age) : '',
       role: c.role ?? '',
+      category: c.category ?? '',
       personalitySummary: c.personalitySummary ?? '',
       motivation: c.motivation ?? '',
       speakingStyle: c.speakingStyle ?? '',
@@ -152,6 +160,7 @@ export function initCharactersState() {
         name: editForm.name,
         age: editForm.age ? parseInt(editForm.age) : undefined,
         role: editForm.role || undefined,
+        category: editForm.category || undefined,
         personalitySummary: editForm.personalitySummary || undefined,
         motivation: editForm.motivation || undefined,
         speakingStyle: editForm.speakingStyle || undefined,
@@ -192,8 +201,9 @@ export function initCharactersState() {
     editLoading,
     openEdit,
     submitEdit,
-    extractQuery,
-    extractLoading,
-    extractFromNovel,
+    generateDesc,
+    generateFromNovel,
+    generateLoading,
+    generateFromDesc,
   }
 }

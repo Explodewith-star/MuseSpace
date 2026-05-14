@@ -34,3 +34,17 @@ export function updateStoryOutline(
 export function deleteStoryOutline(projectId: string, outlineId: string): Promise<boolean> {
   return request.delete(`/projects/${projectId}/outlines/${outlineId}`)
 }
+
+export interface AdjustOutlineRequest {
+  instruction: string
+  targetChapterNumbers: number[]
+  targetCount?: number
+}
+
+export function adjustOutline(
+  projectId: string,
+  outlineId: string,
+  data: AdjustOutlineRequest,
+): Promise<string> {
+  return request.post(`/projects/${projectId}/outlines/${outlineId}/adjust`, data)
+}

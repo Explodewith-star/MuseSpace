@@ -85,26 +85,19 @@ public class CharactersController : ControllerBase
     }
 
     /// <summary>
-    /// 从原著向量库中 AI 提取角色信息（仅返回建议值，不自动保存）
+    /// <summary>
+    /// AI 生成角色信息（支持从原著提取或自由生成）。
+    /// - FromNovel=true：向量检索原著 + 提取 Agent
+    /// - FromNovel=false：纯 AI 生成 Agent
+    /// 仅返回建议值，不自动保存。
     /// </summary>
-    [HttpPost("extract-from-novel")]
-    public async Task<ActionResult<ApiResponse<ExtractCharacterResponse>>> ExtractFromNovel(
-        Guid projectId, [FromBody] ExtractCharacterRequest request, CancellationToken cancellationToken)
+    [HttpPost("generate")]
+    public async Task<ActionResult<ApiResponse<ExtractCharacterResponse>>> GenerateCharacter(
+        Guid projectId, [FromBody] GenerateCharacterRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Query))
-            return BadRequest(ApiResponse<ExtractCharacterResponse>.Fail("请描述要提取的角色"));
+        if (string.IsNullOrWhiteSpace(request.Description))
+            return BadRequest(ApiResponse<ExtractCharacterResponse>.Fail("请描述角色的基本信息"));
 
-        // 1. 向量检索原著相关片段（topK=10，扩大上下文覆盖）
-        var chunks = await _novelSearch.SearchAsync(projectId, request.Query, topK: 10, ct: cancellationToken);
-        var relevant = chunks.Where(c => c.Similarity > 0.25).ToList();
-
-        if (relevant.Count == 0)
-            return BadRequest(ApiResponse<ExtractCharacterResponse>.Fail("未在原著中找到相关内容，请确认已完成导入和向量化"));
-
-        var novelContext = string.Join("\n\n---\n\n",
-            relevant.Select((c, i) => $"[片段{i + 1}]\n{c.Content}"));
-
-        // 2. 通过 AgentRunner 调用角色提取 Agent
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var agentContext = new AgentRunContext
         {
@@ -112,55 +105,68 @@ public class CharactersController : ControllerBase
             ProjectId = projectId,
         };
 
-        var userPrompt = $"请从以下原著片段中提取角色「{request.Query}」的信息：\n\n{novelContext}";
-        var agentResult = await _agentRunner.RunAsync(
-            CharacterExtractAgentDefinition.AgentName,
-            userPrompt,
-            agentContext,
-            cancellationToken);
+        string userPrompt;
+        string agentName;
+        int sourceChunkCount = 0;
+
+        if (request.FromNovel)
+        {
+            // 从原著向量库检索相关片段
+            var chunks = await _novelSearch.SearchAsync(projectId, request.Description, topK: 10, ct: cancellationToken);
+            var relevant = chunks.Where(c => c.Similarity > 0.25).ToList();
+
+            if (relevant.Count == 0)
+                return BadRequest(ApiResponse<ExtractCharacterResponse>.Fail("未在原著中找到相关内容，请确认已完成导入和向量化"));
+
+            var novelContext = string.Join("\n\n---\n\n",
+                relevant.Select((c, i) => $"[片段{i + 1}]\n{c.Content}"));
+
+            userPrompt = $"请从以下原著片段中提取角色「{request.Description}」的信息：\n\n{novelContext}";
+            agentName = CharacterExtractAgentDefinition.AgentName;
+            sourceChunkCount = relevant.Count;
+        }
+        else
+        {
+            userPrompt = $"请根据以下描述生成角色信息：\n\n{request.Description}";
+            agentName = CharacterGenerationAgentDefinition.AgentName;
+        }
+
+        var agentResult = await _agentRunner.RunAsync(agentName, userPrompt, agentContext, cancellationToken);
 
         if (!agentResult.Success)
             return StatusCode(502, ApiResponse<ExtractCharacterResponse>.Fail(
-                agentResult.ErrorMessage ?? "AI 提取失败，请重试"));
+                agentResult.ErrorMessage ?? "AI 生成失败，请重试"));
 
-        // 3. 解析 JSON（宽容处理 markdown 代码块包装）
+        // 解析 JSON（宽容处理 markdown 代码块包装）
         var json = agentResult.Output.Trim();
         if (json.StartsWith("```"))
             json = System.Text.RegularExpressions.Regex.Replace(json, @"```\w*\n?", "").Trim('`').Trim();
 
-        ExtractCharacterResponse extracted;
+        ExtractCharacterResponse generated;
         try
         {
             var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var parsed = JsonSerializer.Deserialize<ExtractCharacterResponse>(json, opts)
                         ?? throw new InvalidOperationException("Empty result");
-            extracted = new ExtractCharacterResponse
+            generated = new ExtractCharacterResponse
             {
                 Name = parsed.Name,
                 Age = parsed.Age,
                 Role = parsed.Role,
+                Category = parsed.Category,
                 PersonalitySummary = parsed.PersonalitySummary,
                 Motivation = parsed.Motivation,
                 SpeakingStyle = parsed.SpeakingStyle,
                 ForbiddenBehaviors = parsed.ForbiddenBehaviors,
                 CurrentState = parsed.CurrentState,
-                SourceChunkCount = relevant.Count,
+                SourceChunkCount = sourceChunkCount,
             };
         }
-        catch (Exception)
+        catch
         {
             return StatusCode(502, ApiResponse<ExtractCharacterResponse>.Fail("AI 返回格式异常，请重试"));
         }
 
-        // 4. 将提取结果写入统一建议表，供用户审核后再正式应用
-        await _suggestionService.CreateAsync(
-            agentRunId: agentContext.RunId,
-            storyProjectId: projectId,
-            category: SuggestionCategories.Character,
-            title: $"候选角色：{extracted.Name}",
-            contentJson: json,
-            cancellationToken: cancellationToken);
-
-        return Ok(ApiResponse<ExtractCharacterResponse>.Ok(extracted));
+        return Ok(ApiResponse<ExtractCharacterResponse>.Ok(generated));
     }
 }

@@ -534,6 +534,11 @@ function severityLabel(s?: string): string {
 }
 
 .detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg-base);
+  padding-bottom: 8px;
   margin-bottom: 4px;
 }
 

@@ -73,6 +73,7 @@ export interface CharacterResponse {
   name: string
   age?: number
   role?: string
+  category?: string
   personalitySummary?: string
   motivation?: string
   speakingStyle?: string
@@ -85,6 +86,7 @@ export interface CreateCharacterRequest {
   name: string
   age?: number
   role?: string
+  category?: string
   personalitySummary?: string
   motivation?: string
   speakingStyle?: string
@@ -99,6 +101,7 @@ export interface UpdateCharacterRequest {
   name?: string
   age?: number
   role?: string
+  category?: string
   personalitySummary?: string
   motivation?: string
   speakingStyle?: string
@@ -113,6 +116,7 @@ export interface ExtractCharacterResponse {
   name: string
   age?: number
   role?: string
+  category?: string
   personalitySummary?: string
   motivation?: string
   speakingStyle?: string

@@ -9,13 +9,16 @@ public sealed class StoryOutlineAppService
 {
     private readonly IStoryOutlineRepository _outlineRepository;
     private readonly IChapterRepository _chapterRepository;
+    private readonly IAgentSuggestionRepository _suggestionRepository;
 
     public StoryOutlineAppService(
         IStoryOutlineRepository outlineRepository,
-        IChapterRepository chapterRepository)
+        IChapterRepository chapterRepository,
+        IAgentSuggestionRepository suggestionRepository)
     {
         _outlineRepository = outlineRepository;
         _chapterRepository = chapterRepository;
+        _suggestionRepository = suggestionRepository;
     }
 
     public async Task<List<StoryOutlineResponse>> GetByProjectAsync(
@@ -124,6 +127,21 @@ public sealed class StoryOutlineAppService
         var outline = await _outlineRepository.GetByIdAsync(projectId, outlineId, cancellationToken);
         if (outline is null || outline.IsDefault) return false;
 
+        // 1. 清理 AgentSuggestion 孤儿记录（无 FK 约束，不会 DB 级联）
+        //    大纲规划建议以 TargetEntityId = outlineId 关联，删大纲时必须手动清理
+        await _suggestionRepository.DeleteByTargetEntityIdAsync(outlineId, cancellationToken);
+
+        // 2. 显式删除章节（确保顺序；DB CASCADE 也会处理，但显式调用更可控）
+        //    章节删除后 DB 会级联删除：Scene、ChapterEvent（by ChapterId）
+        //    大纲删除后 DB 会级联删除：ChapterEvent（by StoryOutlineId）、CanonFact、ChapterBatchDraftRun
+        var chapters = await _chapterRepository.GetByOutlineAsync(projectId, outlineId, cancellationToken);
+        if (chapters.Count > 0)
+        {
+            var chapterIds = chapters.Select(c => c.Id);
+            await _chapterRepository.BatchDeleteAsync(projectId, chapterIds, cancellationToken);
+        }
+
+        // 3. 删除大纲本体（DB CASCADE 处理剩余关联：CanonFact、ChapterBatchDraftRun、ChapterEvent by OutlineId）
         await _outlineRepository.DeleteAsync(projectId, outlineId, cancellationToken);
         return true;
     }

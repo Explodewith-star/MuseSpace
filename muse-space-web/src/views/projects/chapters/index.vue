@@ -13,12 +13,13 @@ import AppModal from '@/components/base/AppModal.vue'
 import { initChaptersState } from './hooks'
 import { triggerOutlinePlan } from '@/api/suggestions'
 import { getSuggestions } from '@/api/suggestions'
-import { createStoryOutline, getStoryOutlines } from '@/api/outlines'
+import { createStoryOutline, getStoryOutlines, deleteStoryOutline, adjustOutline } from '@/api/outlines'
 import { getCharacters } from '@/api/characters'
 import { getWorldRules } from '@/api/worldRules'
 import { exportProjectChapters, type ExportFormat } from '@/api/export'
 import {
   batchGenerateDrafts,
+  batchDeleteChapters,
   cancelChapterBatchRun,
   getChapterBatchRun,
   listChapterBatchRuns,
@@ -26,6 +27,7 @@ import {
   HARD_MAX_BATCH_DRAFT_SIZE,
   type ChapterBatchDraftRunResponse,
 } from '@/api/chapters'
+import type { AdjustOutlineRequest } from '@/api/outlines'
 import { useAgentProgress } from '@/composables/useAgentProgress'
 import { useToast } from '@/composables/useToast'
 import type { GenerationMode, StoryOutlineResponse } from '@/types/models'
@@ -331,6 +333,15 @@ const outlineStage = computed(() => {
   return e
 })
 
+const adjustStage = computed(() => {
+  const e = latestEvent.value
+  if (!e || e.taskType !== 'outline-adjust') return null
+  return e
+})
+
+/** 本地状态：提交后直到 SignalR 返回 done/failed 期间显示进度 */
+const isAdjusting = ref(false)
+
 // ── A3 批量生成草稿 ─────────────────────────────────────────
 const batchModalOpen = ref(false)
 const batchSubmitLoading = ref(false)
@@ -472,6 +483,13 @@ const stageLabels: Record<string, string> = {
   failed: '生成失败',
 }
 
+const adjustStageLabels: Record<string, string> = {
+  started: '正在收集章节上下文…',
+  generating: 'AI 正在调整大纲章节…',
+  done: '大纲调整已完成',
+  failed: '调整失败',
+}
+
 // ── 持久化"待处理大纲"计数 ──────────────────────────────────
 const pendingOutlineCount = ref(0)
 
@@ -517,6 +535,200 @@ watch(outlineStage, (e) => {
     toast.error(e.error ?? '大纲生成失败')
   }
 })
+
+// ── 大纲删除 ─────────────────────────────────────────────
+const outlineDeleteTarget = ref<(typeof outlines.value)[0] | null>(null)
+const outlineDeleteLoading = ref(false)
+
+function openOutlineDelete(outline: (typeof outlines.value)[0]) {
+  outlineDeleteTarget.value = outline
+}
+
+function cancelOutlineDelete() {
+  outlineDeleteTarget.value = null
+}
+
+async function confirmOutlineDelete() {
+  const target = outlineDeleteTarget.value
+  if (!target) return
+  outlineDeleteLoading.value = true
+  try {
+    await deleteStoryOutline(projectId, target.id)
+    outlines.value = outlines.value.filter((o) => o.id !== target.id)
+    // 若删除的是当前选中大纲，切换到第一个
+    if (selectedOutlineId.value === target.id) {
+      const first = outlines.value[0]
+      if (first) {
+        selectedOutlineId.value = first.id
+        selectedMode.value = first.mode as GenerationMode
+      } else {
+        selectedOutlineId.value = ''
+      }
+    }
+    outlineDeleteTarget.value = null
+    toast.success(`大纲《${target.name}》已删除`)
+  } catch {
+    // handled by interceptor
+  } finally {
+    outlineDeleteLoading.value = false
+  }
+}
+
+// ── 编辑模式（批量章节删除 + AI 调整） ────────────────────
+const editMode = ref(false)
+const selectedChapterIds = ref<Set<string>>(new Set())
+const batchChapterDeleteLoading = ref(false)
+const batchChapterDeleteConfirmVisible = ref(false)
+
+function toggleEditMode() {
+  editMode.value = !editMode.value
+  if (!editMode.value) selectedChapterIds.value = new Set()
+}
+
+function toggleChapterSelect(id: string) {
+  const s = new Set(selectedChapterIds.value)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
+  selectedChapterIds.value = s
+}
+
+const allChaptersSelected = computed(
+  () => chapters.value.length > 0 && selectedChapterIds.value.size === chapters.value.length,
+)
+
+function toggleSelectAll() {
+  if (allChaptersSelected.value) {
+    selectedChapterIds.value = new Set()
+  } else {
+    selectedChapterIds.value = new Set(chapters.value.map((c) => c.id))
+  }
+}
+
+async function confirmBatchChapterDelete() {
+  if (selectedChapterIds.value.size === 0) return
+  batchChapterDeleteLoading.value = true
+  try {
+    const ids = [...selectedChapterIds.value]
+    await batchDeleteChapters(projectId, ids)
+    chapters.value = chapters.value.filter((c) => !selectedChapterIds.value.has(c.id))
+    // 更新大纲章节数
+    if (selectedOutline.value) {
+      const o = outlines.value.find((x) => x.id === selectedOutline.value!.id)
+      if (o) o.chapterCount = Math.max(0, o.chapterCount - ids.length)
+    }
+    selectedChapterIds.value = new Set()
+    batchChapterDeleteConfirmVisible.value = false
+    toast.success(`已删除 ${ids.length} 个章节`)
+  } catch {
+    // handled
+  } finally {
+    batchChapterDeleteLoading.value = false
+  }
+}
+
+// ── AI 续规建议 ────────────────────────────────────────────
+// 基于当前模式已有大纲的上下文，辅助用户快速规划「下一批」大纲
+const chainPlanModalOpen = ref(false)
+const chainPlanForm = reactive({
+  goal: '',
+  chapterCount: '15',
+})
+const chainPlanLoading = ref(false)
+
+/** 当前模式下最后一个大纲（作为续写前驱） */
+const lastModeOutline = computed(() =>
+  modeOutlines.value.length > 0 ? modeOutlines.value[modeOutlines.value.length - 1] : null,
+)
+
+function openChainPlanModal() {
+  chainPlanForm.goal = ''
+  chainPlanForm.chapterCount = '15'
+  loadContextStats()
+  chainPlanModalOpen.value = true
+}
+
+async function submitChainPlan() {
+  if (!chainPlanForm.goal.trim()) return
+  chainPlanLoading.value = true
+  try {
+    const last = lastModeOutline.value
+    // 自动命名：「模式 · 续篇 N」
+    const autoName = `${MODE_LABELS[selectedMode.value]} · 续篇 ${modeOutlines.value.length + 1}`
+    const outline = await createStoryOutline(projectId, {
+      name: autoName,
+      mode: selectedMode.value,
+      previousOutlineId: last?.id,
+      chainId: last?.chainId ?? undefined,
+    })
+    outlines.value.push(outline)
+    selectedOutlineId.value = outline.id
+    chainPlanModalOpen.value = false
+    await triggerOutlinePlan(projectId, {
+      storyOutlineId: outline.id,
+      goal: chainPlanForm.goal.trim(),
+      chapterCount: Number(chainPlanForm.chapterCount),
+      mode: 'continue',
+    })
+    toast.success('续篇规划已提交，请关注进度')
+  } catch {
+    // handled
+  } finally {
+    chainPlanLoading.value = false
+  }
+}
+
+// ── AI 大纲调整 ────────────────────────────────────────────
+const adjustModalOpen = ref(false)
+const adjustForm = reactive({
+  instruction: '',
+  targetCount: '',
+})
+const adjustLoading = ref(false)
+
+function openAdjustModal() {
+  adjustForm.instruction = ''
+  adjustForm.targetCount = ''
+  adjustModalOpen.value = true
+}
+
+async function submitAdjust() {
+  if (!adjustForm.instruction.trim()) return
+  if (selectedChapterIds.value.size === 0) return
+  adjustLoading.value = true
+  try {
+    const targetNumbers = chapters.value
+      .filter((c) => selectedChapterIds.value.has(c.id))
+      .map((c) => c.number)
+    const req: AdjustOutlineRequest = {
+      instruction: adjustForm.instruction.trim(),
+      targetChapterNumbers: targetNumbers,
+      targetCount: adjustForm.targetCount ? Number(adjustForm.targetCount) : undefined,
+    }
+    await adjustOutline(projectId, selectedOutlineId.value, req)
+    adjustModalOpen.value = false
+    selectedChapterIds.value = new Set()
+    editMode.value = false
+    isAdjusting.value = true  // 显示进度条，等待 SignalR 通知
+    toast.success('大纲调整任务已提交，AI 正在处理…')
+  } catch {
+    // handled
+  } finally {
+    adjustLoading.value = false
+  }
+}
+
+// 监听 outline-adjust 进度事件，完成后刷新章节列表
+watch(latestEvent, async (e) => {
+  if (!e || e.taskType !== 'outline-adjust') return
+  if (e.stage === 'done') {
+    isAdjusting.value = false
+    toast.success(e.summary ?? '大纲调整已完成')
+    await loadChapters()
+  } else if (e.stage === 'failed') {
+    isAdjusting.value = false
+    toast.error(e.error ?? '大纲调整失败')
+  }
+})
 </script>
 
 <template>
@@ -549,14 +761,23 @@ watch(outlineStage, (e) => {
           <span class="batch-tab__name">{{ outline.name || `批次 ${idx + 1}` }}</span>
           <span class="batch-tab__meta">{{ outline.chapterCount }} 章</span>
           <i v-if="outline.isDefault" class="i-lucide-star batch-tab__star" />
+          <button
+            v-if="!outline.isDefault"
+            type="button"
+            class="batch-tab__delete"
+            title="删除此大纲"
+            @click.stop="openOutlineDelete(outline)"
+          >
+            <i class="i-lucide-x" />
+          </button>
         </button>
         <button
           type="button"
           class="batch-tab batch-tab--add"
-          @click="openOutlineModal()"
+          @click="openOutlineModal(selectedMode)"
         >
           <i class="i-lucide-plus" />
-          <span>新建批次</span>
+          <span>新建大纲</span>
         </button>
       </div>
       <div class="batch-nav__actions">
@@ -602,9 +823,27 @@ watch(outlineStage, (e) => {
           <i class="i-lucide-sparkles" />
           继续规划
         </AppButton>
+        <AppButton
+          v-if="modeOutlines.length > 0"
+          variant="ghost"
+          size="sm"
+          title="AI 分析当前模式已有大纲，辅助规划下一段故事"
+          @click="openChainPlanModal"
+        >
+          <i class="i-lucide-brain" />
+          AI 续规建议
+        </AppButton>
         <AppButton @click="openCreate">
           <i class="i-lucide-plus" />
           添加章节
+        </AppButton>
+        <AppButton
+          :variant="editMode ? 'primary' : 'ghost'"
+          size="sm"
+          @click="toggleEditMode"
+        >
+          <i :class="editMode ? 'i-lucide-check' : 'i-lucide-edit-3'" />
+          {{ editMode ? '完成' : '编辑' }}
         </AppButton>
       </div>
     </div>
@@ -619,13 +858,23 @@ watch(outlineStage, (e) => {
       <span v-else-if="selectedOutline.branchTopic" class="batch-info__summary">{{ selectedOutline.branchTopic }}</span>
     </div>
 
-    <!-- Agent 进度条 -->
+    <!-- Agent 进度条：大纲规划 -->
     <div v-if="outlineStage && outlineStage.stage !== 'done'" class="agent-progress-bar">
       <div class="progress-indicator" :class="outlineStage.stage">
         <i v-if="outlineStage.stage === 'failed'" class="i-lucide-alert-circle" />
         <i v-else class="i-lucide-loader-2 spin" />
         <span>{{ stageLabels[outlineStage.stage] ?? outlineStage.stage }}</span>
         <span v-if="outlineStage.error" class="progress-error">{{ outlineStage.error }}</span>
+      </div>
+    </div>
+
+    <!-- Agent 进度条：大纲调整 -->
+    <div v-if="isAdjusting || (adjustStage && adjustStage.stage !== 'done')" class="agent-progress-bar agent-progress-bar--adjust">
+      <div class="progress-indicator" :class="adjustStage?.stage ?? 'started'">
+        <i v-if="adjustStage?.stage === 'failed'" class="i-lucide-alert-circle" />
+        <i v-else class="i-lucide-loader-2 spin" />
+        <span>{{ adjustStage ? (adjustStageLabels[adjustStage.stage] ?? 'AI 正在调整大纲…') : 'AI 正在调整大纲…' }}</span>
+        <span v-if="adjustStage?.error" class="progress-error">{{ adjustStage.error }}</span>
       </div>
     </div>
 
@@ -692,6 +941,39 @@ watch(outlineStage, (e) => {
       </p>
     </div>
 
+    <!-- 编辑模式工具栏 -->
+    <div v-if="editMode && chapters.length > 0" class="edit-toolbar">
+      <label class="edit-toolbar__select-all">
+        <input
+          type="checkbox"
+          :checked="allChaptersSelected"
+          :indeterminate="selectedChapterIds.size > 0 && !allChaptersSelected"
+          @change="toggleSelectAll"
+        />
+        全选（{{ selectedChapterIds.size }}/{{ chapters.length }}）
+      </label>
+      <div class="edit-toolbar__actions">
+        <AppButton
+          v-if="selectedChapterIds.size > 0"
+          variant="ghost"
+          size="sm"
+          @click="openAdjustModal"
+        >
+          <i class="i-lucide-sparkles" />
+          AI 调整（{{ selectedChapterIds.size }} 章）
+        </AppButton>
+        <AppButton
+          v-if="selectedChapterIds.size > 0"
+          variant="danger"
+          size="sm"
+          @click="batchChapterDeleteConfirmVisible = true"
+        >
+          <i class="i-lucide-trash-2" />
+          删除选中（{{ selectedChapterIds.size }}）
+        </AppButton>
+      </div>
+    </div>
+
     <!-- 骨架屏 -->
     <div v-if="loading" class="chapter-list">
       <div v-for="i in 4" :key="i" class="chapter-row skeleton-row">
@@ -705,14 +987,14 @@ watch(outlineStage, (e) => {
     <AppEmpty
       v-else-if="!chapters.length"
       icon="i-lucide-book-text"
-      :title="selectedOutline ? '当前批次暂无章节' : '开始创作'"
-      :description="selectedOutline ? '点击「继续规划」让 AI 生成章节，或手动添加' : '新建一个批次，让 AI 帮你规划章节结构'"
+      :title="selectedOutline ? '当前大纲暂无章节' : '开始规划你的故事'"
+      :description="selectedOutline ? '点击「继续规划」让 AI 接续生成章节，或手动添加' : '点击「规划大纲」新建大纲，可选择是否立即让 AI 生成章节计划'"
     >
       <template #action>
         <div class="empty-actions">
-          <AppButton v-if="!selectedOutline" @click="openOutlineModal()">
+          <AppButton v-if="!selectedOutline" @click="openOutlineModal(selectedMode)">
             <i class="i-lucide-sparkles" />
-            新建批次
+            规划大纲
           </AppButton>
           <AppButton v-else variant="ghost" @click="openCreate">
             <i class="i-lucide-plus" />
@@ -728,15 +1010,29 @@ watch(outlineStage, (e) => {
         v-for="chapter in chapters"
         :key="chapter.id"
         class="chapter-row"
-        @click="goDetail(chapter.id)"
+        :class="{ 'chapter-row--selected': editMode && selectedChapterIds.has(chapter.id) }"
+        @click="editMode ? toggleChapterSelect(chapter.id) : goDetail(chapter.id)"
       >
+        <input
+          v-if="editMode"
+          type="checkbox"
+          class="chapter-row__checkbox"
+          :checked="selectedChapterIds.has(chapter.id)"
+          @click.stop
+          @change="toggleChapterSelect(chapter.id)"
+        />
         <span class="chapter-num">第 {{ chapter.number }} 章</span>
         <span class="chapter-title">{{ chapter.title || '未命名' }}</span>
         <span class="chapter-summary">{{ chapter.summary || '—' }}</span>
         <AppBadge :variant="STATUS_VARIANTS[chapter.status] as any" size="sm">
           {{ STATUS_LABELS[chapter.status] }}
         </AppBadge>
-        <button class="row-delete-btn" title="删除章节" @click.stop="openDelete(chapter)">
+        <button
+          v-if="!editMode"
+          class="row-delete-btn"
+          title="删除章节"
+          @click.stop="openDelete(chapter)"
+        >
           <i class="i-lucide-trash-2" />
         </button>
       </div>
@@ -1002,22 +1298,13 @@ watch(outlineStage, (e) => {
     </AppModal>
 
     <!-- 新建大纲 Modal（主入口：创建壳 + 可选 AI 规划） -->
-    <AppModal v-model="outlineModalOpen" title="新建故事大纲" width="560px">
+    <AppModal v-model="outlineModalOpen" title="新建大纲" width="560px">
       <div class="outline-form">
-        <!-- 第一步：写作模式选择 -->
-        <div class="outline-form__section">
-          <label class="outline-form__label">写作模式</label>
-          <div class="outline-mode-grid">
-            <button
-              v-for="mode in (['Original', 'ContinueFromOriginal', 'SideStoryFromOriginal', 'ExpandOrRewrite'] as GenerationMode[])"
-              :key="mode"
-              type="button"
-              :class="['outline-mode-option', { active: outlineForm.mode === mode }]"
-              @click="outlineForm.mode = mode"
-            >
-              {{ MODE_LABELS[mode] }}
-            </button>
-          </div>
+        <!-- 当前模式标签（只读展示，不可修改） -->
+        <div class="outline-current-mode">
+          <i :class="MODE_ICONS[outlineForm.mode]" class="outline-mode-icon" />
+          <span class="outline-mode-name">{{ MODE_LABELS[outlineForm.mode] }}</span>
+          <span class="outline-mode-tip">（由当前选中的模式 Tab 决定）</span>
         </div>
 
         <!-- 大纲名称 -->
@@ -1098,6 +1385,147 @@ watch(outlineStage, (e) => {
         >
           <i v-if="outlineForm.withAiPlan" class="i-lucide-sparkles" />
           {{ outlineForm.withAiPlan ? '创建并开始规划' : '创建大纲' }}
+        </AppButton>
+      </template>
+    </AppModal>
+
+    <!-- 删除大纲确认 -->
+    <AppConfirm
+      :model-value="!!outlineDeleteTarget"
+      title="删除大纲"
+      variant="danger"
+      confirm-text="确认删除"
+      :loading="outlineDeleteLoading"
+      @update:model-value="cancelOutlineDelete"
+      @confirm="confirmOutlineDelete"
+    >
+      <template #message>
+        <p>是否要删除大纲《<strong>{{ outlineDeleteTarget?.name }}</strong>》？</p>
+        <p class="confirm-sub-text">
+          此操作将永久删除该大纲及其
+          <strong>{{ outlineDeleteTarget?.chapterCount ?? 0 }}</strong>
+          个章节、所有章节草稿、摘要、事件记录与 AI 建议，<strong>无法恢复</strong>。
+        </p>
+      </template>
+    </AppConfirm>
+
+    <!-- 批量章节删除确认 -->
+    <AppConfirm
+      v-model="batchChapterDeleteConfirmVisible"
+      title="批量删除章节"
+      :message="`将删除选中的 ${selectedChapterIds.size} 个章节，包含已有草稿与摘要数据，确认删除？`"
+      variant="danger"
+      confirm-text="确认删除"
+      :loading="batchChapterDeleteLoading"
+      @confirm="confirmBatchChapterDelete"
+    />
+
+    <!-- AI 续规建议 Modal -->
+    <AppModal v-model="chainPlanModalOpen" title="AI 续规建议" width="560px">
+      <div class="plan-form">
+        <!-- 前驱大纲上下文 -->
+        <div v-if="lastModeOutline" class="chain-context-card">
+          <div class="chain-context-header">
+            <i class="i-lucide-link" />
+            <span>已有 <strong>{{ modeOutlines.length }}</strong> 个大纲，接续上一段规划</span>
+          </div>
+          <div class="chain-context-last">
+            <span class="chain-context-label">上一段大纲：</span>
+            <strong>{{ lastModeOutline.name }}</strong>
+            <span class="chain-context-meta">{{ lastModeOutline.chapterCount }} 章</span>
+          </div>
+          <p v-if="lastModeOutline.outlineSummary" class="chain-context-summary">
+            {{ lastModeOutline.outlineSummary }}
+          </p>
+        </div>
+
+        <!-- 上下文统计 -->
+        <div class="context-info">
+          <span><i class="i-lucide-users" /> {{ characterCount }} 位角色</span>
+          <span><i class="i-lucide-globe" /> {{ worldRuleCount }} 条世界观规则</span>
+        </div>
+
+        <AppTextarea
+          v-model="chainPlanForm.goal"
+          label="接下来的故事方向 *"
+          placeholder="描述后续想让故事往哪里走，AI 会结合已有大纲上下文接续规划..."
+          :rows="4"
+        />
+
+        <AppInput
+          v-model="chainPlanForm.chapterCount"
+          label="预计章节数"
+          type="number"
+          placeholder="15"
+        />
+        <p class="plan-count-tip">
+          <i class="i-lucide-lightbulb" />
+          建议设置 <strong>10～20 章</strong>；超过 30 章 AI 容易出现重复情节
+        </p>
+
+        <p class="plan-hint">
+          <i class="i-lucide-info" />
+          系统会自动创建一个新大纲并锁定模式为「{{ MODE_LABELS[selectedMode] }}」，AI 规划完成后请前往「建议中心」查看并导入章节。
+        </p>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="chainPlanModalOpen = false">取消</AppButton>
+        <AppButton
+          :loading="chainPlanLoading"
+          :disabled="!chainPlanForm.goal.trim()"
+          @click="submitChainPlan"
+        >
+          <i class="i-lucide-sparkles" />
+          生成续篇规划
+        </AppButton>
+      </template>
+    </AppModal>
+
+    <!-- AI 大纲调整 Modal -->
+    <AppModal v-model="adjustModalOpen" title="AI 调整大纲" width="560px">
+      <div class="adjust-form">
+        <div class="adjust-target-info">
+          <i class="i-lucide-info" />
+          <span>将对以下 <strong>{{ selectedChapterIds.size }}</strong> 个章节进行调整：</span>
+          <div class="adjust-target-chapters">
+            <span
+              v-for="chapter in chapters.filter(c => selectedChapterIds.has(c.id))"
+              :key="chapter.id"
+              class="adjust-chapter-tag"
+            >
+              第 {{ chapter.number }} 章
+            </span>
+          </div>
+        </div>
+
+        <AppTextarea
+          v-model="adjustForm.instruction"
+          label="调整指令 *"
+          placeholder="描述你的调整需求，例如：把这1章扩展为10章，重点铺垫主角与反派之间的矛盾冲突；或：把这5章铺垫剧情压缩为2章，去掉啰嗦部分"
+          :rows="5"
+        />
+
+        <AppInput
+          v-model="adjustForm.targetCount"
+          label="期望调整后章节数（可选）"
+          type="number"
+          placeholder="展开时填写，如：10；合并时可不填"
+        />
+
+        <p class="adjust-hint">
+          <i class="i-lucide-lightbulb" />
+          AI 将只修改目标章节范围，保持前后文连贯。完成后章节列表自动刷新。
+        </p>
+      </div>
+      <template #footer>
+        <AppButton variant="ghost" @click="adjustModalOpen = false">取消</AppButton>
+        <AppButton
+          :loading="adjustLoading"
+          :disabled="!adjustForm.instruction.trim()"
+          @click="submitAdjust"
+        >
+          <i class="i-lucide-sparkles" />
+          提交调整
         </AppButton>
       </template>
     </AppModal>
@@ -1285,6 +1713,12 @@ watch(outlineStage, (e) => {
 /* Agent 进度条 */
 .agent-progress-bar {
   margin-bottom: 16px;
+}
+
+.agent-progress-bar--adjust .progress-indicator {
+  background: color-mix(in srgb, var(--color-warning, #f59e0b) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning, #f59e0b) 25%, transparent);
+  color: color-mix(in srgb, var(--color-warning, #f59e0b) 80%, var(--color-text-primary));
 }
 
 .outline-pending-banner {
@@ -1850,5 +2284,208 @@ watch(outlineStage, (e) => {
   margin: 0;
   font-size: 12px;
   color: var(--color-danger, #d63838);
+}
+
+/* ── 大纲 Modal: 当前模式只读展示 ────────────────────── */
+.outline-current-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  margin-bottom: 4px;
+}
+
+.outline-mode-icon {
+  font-size: 16px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.outline-mode-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.outline-mode-tip {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-left: 4px;
+}
+
+/* ── AI 续规建议: 前驱大纲上下文卡片 ─────────────────── */
+.chain-context-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--color-bg-elevated);
+  border-left: 3px solid var(--color-primary);
+  margin-bottom: 4px;
+}
+
+.chain-context-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.chain-context-last {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.chain-context-label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.chain-context-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+.chain-context-summary {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin: 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+/* ── 大纲 Tab 删除按钮 ────────────────────────────────── */
+.batch-tab__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  padding: 0;
+  margin-left: 2px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.batch-tab:hover .batch-tab__delete,
+.batch-tab--active .batch-tab__delete {
+  opacity: 1;
+}
+
+.batch-tab__delete:hover {
+  color: var(--color-danger, #d63838);
+  background: color-mix(in srgb, var(--color-danger, #d63838) 12%, transparent);
+}
+
+/* ── 编辑模式工具栏 ────────────────────────────────────── */
+.edit-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.edit-toolbar__select-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.edit-toolbar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── 章节行勾选状态 ────────────────────────────────────── */
+.chapter-row__checkbox {
+  flex-shrink: 0;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.chapter-row--selected {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+/* ── 删除大纲确认弹窗辅助文字 ────────────────────────── */
+.confirm-sub-text {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.confirm-sub-text strong {
+  color: var(--color-danger, #d63838);
+}
+
+/* ── AI 大纲调整 Modal ──────────────────────────────── */
+.adjust-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.adjust-target-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--color-bg-elevated);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.adjust-target-chapters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.adjust-chapter-tag {
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.adjust-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.5;
 }
 </style>

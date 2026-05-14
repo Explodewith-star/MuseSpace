@@ -17,4 +17,6 @@ public class Character
     public string? PrivateSecrets { get; set; }
     public string? CurrentState { get; set; }
     public string? Tags { get; set; }
+    /// <summary>角色分类：主角/配角/反派/龙套/其他</summary>
+    public string? Category { get; set; }
 }

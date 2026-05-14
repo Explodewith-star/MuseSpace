@@ -1,7 +1,10 @@
+using Hangfire;
 using Microsoft.AspNetCore.Mvc;
 using MuseSpace.Application.Services.Story;
 using MuseSpace.Contracts.Common;
 using MuseSpace.Contracts.Outlines;
+using MuseSpace.Infrastructure.Jobs;
+using System.Security.Claims;
 
 namespace MuseSpace.Api.Controllers;
 
@@ -10,8 +13,16 @@ namespace MuseSpace.Api.Controllers;
 public sealed class StoryOutlinesController : ControllerBase
 {
     private readonly StoryOutlineAppService _service;
+    private readonly IBackgroundJobClient _backgroundJobs;
 
-    public StoryOutlinesController(StoryOutlineAppService service) => _service = service;
+    public StoryOutlinesController(StoryOutlineAppService service, IBackgroundJobClient backgroundJobs)
+    {
+        _service = service;
+        _backgroundJobs = backgroundJobs;
+    }
+
+    private Guid? CurrentUserId =>
+        Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
 
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<StoryOutlineResponse>>>> GetAll(
@@ -64,5 +75,28 @@ public sealed class StoryOutlinesController : ControllerBase
         var deleted = await _service.DeleteAsync(projectId, outlineId, cancellationToken);
         if (!deleted) return BadRequest(ApiResponse<bool>.Fail("默认大纲不可删除，或大纲不存在"));
         return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    /// <summary>提交大纲调整任务（展开/合并指定章节）。</summary>
+    [HttpPost("{outlineId:guid}/adjust")]
+    public ActionResult<ApiResponse<string>> Adjust(
+        Guid projectId,
+        Guid outlineId,
+        [FromBody] AdjustOutlineRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Instruction))
+            return BadRequest(ApiResponse<string>.Fail("调整指令不能为空"));
+        if (request.TargetChapterNumbers.Count == 0)
+            return BadRequest(ApiResponse<string>.Fail("请指定目标章节编号"));
+
+        var userId = CurrentUserId;
+        _backgroundJobs.Enqueue<OutlineAdjustJob>(
+            job => job.ExecuteAsync(
+                projectId, outlineId,
+                request.Instruction,
+                request.TargetChapterNumbers,
+                request.TargetCount,
+                userId));
+        return Ok(ApiResponse<string>.Ok("大纲调整任务已提交"));
     }
 }

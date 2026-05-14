@@ -9,7 +9,6 @@ import AppConfirm from '@/components/base/AppConfirm.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
-import AgentLauncher from '@/components/base/AgentLauncher.vue'
 import PendingSuggestionPanel from '@/components/base/PendingSuggestionPanel.vue'
 import { initCharactersState } from './hooks'
 
@@ -34,9 +33,10 @@ const {
   editLoading,
   openEdit,
   submitEdit,
-  extractQuery,
-  extractLoading,
-  extractFromNovel,
+  generateDesc,
+  generateFromNovel,
+  generateLoading,
+  generateFromDesc,
 } = initCharactersState()
 
 // ── 搜索 & 视图切换 ──
@@ -105,17 +105,51 @@ function toggleExpand(id: string) {
       </div>
     </div>
 
-    <!-- D3-2 Agent 工作台：从原著批量提取候选角色 -->
-    <AgentLauncher
-      class="agent-launcher-block"
-      :project-id="projectId"
-      title="角色提取 Agent"
-      description="从已导入原著中批量提取候选角色，结果进入建议中心等待确认。"
-      :default-agent-type="'character-extract'"
-      placeholder="可选：补充约束，例如“只提取主要配角，忽略路人”"
-      suggestion-category="Character"
-      :presets="[{ label: '从原著提取角色', agentType: 'character-extract', icon: 'i-lucide-users' }]"
-    />
+    <!-- 角色生成 Agent -->
+    <div class="agent-launcher-block char-generate-agent">
+      <div class="char-generate-header">
+        <div class="char-generate-title">
+          <i class="i-lucide-wand-sparkles" />
+          角色生成 Agent
+        </div>
+        <p class="char-generate-desc">描述角色特征，AI 自动生成完整角色卡并填入添加表单。</p>
+      </div>
+      <div class="char-generate-source">
+        <button
+          type="button"
+          :class="['source-btn', { active: !generateFromNovel }]"
+          @click="generateFromNovel = false"
+        >
+          <i class="i-lucide-sparkles" /> 自由生成
+        </button>
+        <button
+          type="button"
+          :class="['source-btn', { active: generateFromNovel }]"
+          @click="generateFromNovel = true"
+        >
+          <i class="i-lucide-book-open" /> 从原著提取
+        </button>
+      </div>
+      <div class="char-generate-input">
+        <input
+          v-model="generateDesc"
+          class="generate-input"
+          type="text"
+          :placeholder="generateFromNovel
+            ? '描述要提取的角色，如「主角」「石泓」「女二号」'
+            : '描述角色特征，如「冷酷的女杀手，内心渴望救赎」'"
+        />
+        <AppButton
+          size="sm"
+          :loading="generateLoading"
+          :disabled="!generateDesc.trim()"
+          @click="generateFromDesc"
+        >
+          <i class="i-lucide-wand-sparkles" />
+          生成
+        </AppButton>
+      </div>
+    </div>
 
     <PendingSuggestionPanel
       :project-id="projectId"
@@ -171,6 +205,7 @@ function toggleExpand(id: string) {
                   <p v-if="char.role" class="char-role">{{ char.role }}</p>
                 </div>
                 <div class="char-card__actions">
+                  <AppBadge v-if="char.category" variant="primary" size="sm">{{ char.category }}</AppBadge>
                   <AppBadge v-if="char.age" variant="muted">{{ char.age }} 岁</AppBadge>
                   <button class="card-action-btn" title="编辑角色" @click="openEdit(char)">
                     <i class="i-lucide-pencil" />
@@ -253,6 +288,7 @@ function toggleExpand(id: string) {
                   <p v-if="char.role" class="char-role">{{ char.role }}</p>
                 </div>
                 <div class="char-card__actions">
+                  <AppBadge v-if="char.category" variant="primary" size="sm">{{ char.category }}</AppBadge>
                   <AppBadge v-if="char.age" variant="muted">{{ char.age }} 岁</AppBadge>
                   <button class="card-action-btn" title="编辑角色" @click="openEdit(char)">
                     <i class="i-lucide-pencil" />
@@ -323,28 +359,46 @@ function toggleExpand(id: string) {
     <!-- 添加角色抽屉 -->
     <AppDrawer v-model="drawerOpen" title="添加角色" width="520px">
       <div class="form-fields">
-        <!-- AI 从原著提取区块 -->
-        <div class="ai-extract-block">
-          <div class="ai-extract-label">
-            <i class="i-lucide-sparkles" />
-            从原著自动提取（需已完成导入）
+        <!-- AI 角色生成（合并：从原著提取 + 自由生成） -->
+        <div class="ai-generate-block">
+          <div class="ai-block-title">
+            <i class="i-lucide-wand-sparkles" />
+            AI 生成角色
           </div>
-          <div class="ai-extract-row">
+          <div class="char-generate-source" style="margin-bottom: 6px">
+            <button
+              type="button"
+              :class="['source-btn', { active: !generateFromNovel }]"
+              @click="generateFromNovel = false"
+            >
+              <i class="i-lucide-sparkles" /> 自由生成
+            </button>
+            <button
+              type="button"
+              :class="['source-btn', { active: generateFromNovel }]"
+              @click="generateFromNovel = true"
+            >
+              <i class="i-lucide-book-open" /> 从原著提取
+            </button>
+          </div>
+          <div class="ai-generate-row">
             <AppInput
-              v-model="extractQuery"
-              placeholder="描述角色，如「主角」「石泓」「女主角」"
-              style="flex: 1"
+              v-model="generateDesc"
+              class="ai-desc-input"
+              :placeholder="generateFromNovel
+                ? '描述要提取的角色，如「主角」「石泓」'
+                : '描述角色特征，如「冷酷的女杀手，内心渴望救赎」'"
             />
             <AppButton
               size="sm"
-              :loading="extractLoading"
-              :disabled="!extractQuery.trim()"
-              @click="extractFromNovel"
+              :loading="generateLoading"
+              :disabled="!generateDesc.trim()"
+              @click="generateFromDesc"
             >
-              提取
+              生成
             </AppButton>
           </div>
-          <p class="ai-extract-hint">AI 将检索原著向量库并自动填写下方表单，你可以修改后保存</p>
+          <p class="ai-extract-hint">AI 将生成完整角色卡，自动填入下方表单，你可以修改后保存</p>
         </div>
 
         <div class="form-section-title">基本信息</div>
@@ -352,6 +406,21 @@ function toggleExpand(id: string) {
         <div class="form-row">
           <AppInput v-model="createForm.age" label="年龄" placeholder="如：28" />
           <AppInput v-model="createForm.role" label="身份定位" placeholder="如：主角、反派、导师" />
+        </div>
+        <!-- 角色分类 -->
+        <div class="form-field">
+          <label class="form-label">角色分类</label>
+          <div class="category-options">
+            <button
+              v-for="cat in ['', '主角', '配角', '反派', '龙套', '其他']"
+              :key="cat"
+              type="button"
+              :class="['category-btn', { active: createForm.category === cat }]"
+              @click="createForm.category = cat"
+            >
+              {{ cat || '不选' }}
+            </button>
+          </div>
         </div>
 
         <div class="form-section-title">性格与动机</div>
@@ -422,8 +491,23 @@ function toggleExpand(id: string) {
         <div class="form-section-title">基本信息</div>
         <AppInput v-model="editForm.name" label="角色名称 *" placeholder="角色姓名" />
         <div class="form-row">
-          <AppInput v-model="editForm.age" label="年龄" placeholder="如：28" />
-          <AppInput v-model="editForm.role" label="身份定位" placeholder="如：主角、反派、导师" />
+          <AppInput v-model="editForm.age" label="年龄" />
+          <AppInput v-model="editForm.role" label="身份定位" />
+        </div>
+        <!-- 角色分类 -->
+        <div class="form-field">
+          <label class="form-label">角色分类</label>
+          <div class="category-options">
+            <button
+              v-for="cat in ['', '主角', '配角', '反派', '龙套', '其他']"
+              :key="cat"
+              type="button"
+              :class="['category-btn', { active: editForm.category === cat }]"
+              @click="editForm.category = cat"
+            >
+              {{ cat || '不选' }}
+            </button>
+          </div>
         </div>
         <div class="form-section-title">性格与动机</div>
         <AppTextarea v-model="editForm.personalitySummary" label="性格摘要" :rows="3" />
@@ -859,5 +943,165 @@ function toggleExpand(id: string) {
 .expand-field strong {
   color: var(--color-text-primary);
   margin-right: 4px;
+}
+
+/* Category selector */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.category-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.category-btn {
+  padding: 4px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.category-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.category-btn.active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* AI generate block */
+.ai-generate-block {
+  border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-generate-block .ai-block-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.ai-generate-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.ai-generate-row .ai-desc-input {
+  flex: 1;
+}
+
+/* 角色生成 Agent 区块 */
+.char-generate-agent {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  background: var(--color-bg-surface);
+  margin-bottom: 16px;
+}
+
+.char-generate-header {
+  margin-bottom: 12px;
+}
+
+.char-generate-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.char-generate-desc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.char-generate-source {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.source-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.source-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.source-btn.active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.char-generate-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.generate-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.generate-input:focus {
+  border-color: var(--color-primary);
+}
+
+.generate-input::placeholder {
+  color: var(--color-text-muted);
 }
 </style>

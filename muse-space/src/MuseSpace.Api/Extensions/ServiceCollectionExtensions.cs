@@ -158,6 +158,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(PlotThreadTrackingAgentDefinition.Create());
         services.AddSingleton(ChapterEventExtractionAgentDefinition.Create());
         services.AddSingleton(CanonFactExtractionAgentDefinition.Create());
+        services.AddSingleton(OutlineAdjustAgentDefinition.Create());
+        services.AddSingleton(CharacterGenerationAgentDefinition.Create());
         // Agent 工具注册（P0 暂无工具，P1 扩展时通过 Scrutor 或手动注册 IAgentTool）
         // AgentRunner（Scoped：依赖 DbContext + ILlmClient 都是 Scoped）
         services.AddScoped<IAgentRunner, AgentRunner>();

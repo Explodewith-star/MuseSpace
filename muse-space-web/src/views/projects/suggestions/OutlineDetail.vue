@@ -446,6 +446,11 @@ onUnmounted(() => {
 }
 
 .page-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg-base);
+  padding-bottom: 8px;
   display: flex;
   align-items: center;
   gap: 12px;

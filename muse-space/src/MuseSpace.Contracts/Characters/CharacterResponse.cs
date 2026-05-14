@@ -15,4 +15,5 @@ public sealed class CharacterResponse
     public string? ForbiddenBehaviors { get; init; }
     public string? CurrentState { get; init; }
     public string? Tags { get; init; }
+    public string? Category { get; init; }
 }

@@ -57,6 +57,7 @@ public sealed class CharacterAppService
         if (request.PrivateSecrets is not null) existing.PrivateSecrets = request.PrivateSecrets;
         if (request.CurrentState is not null) existing.CurrentState = request.CurrentState;
         if (request.Tags is not null) existing.Tags = request.Tags;
+        if (request.Category is not null) existing.Category = request.Category;
 
         await _repository.SaveAsync(projectId, existing, cancellationToken);
         return existing.Adapt<CharacterResponse>();

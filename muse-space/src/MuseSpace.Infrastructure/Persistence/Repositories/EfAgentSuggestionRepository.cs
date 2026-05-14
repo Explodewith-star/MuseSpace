@@ -73,4 +73,11 @@ public sealed class EfAgentSuggestionRepository : IAgentSuggestionRepository
             .Where(s => s.SourceNovelId == novelId && s.Status != SuggestionStatus.Applied)
             .ExecuteDeleteAsync(cancellationToken);
     }
+
+    public async Task<int> DeleteByTargetEntityIdAsync(Guid targetEntityId, CancellationToken cancellationToken = default)
+    {
+        return await _db.AgentSuggestions
+            .Where(s => s.TargetEntityId == targetEntityId)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
 }

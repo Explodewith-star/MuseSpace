@@ -12,4 +12,5 @@ public enum BackgroundTaskType
     NovelEndingSummary = 6,
     CharacterExtraction = 7,
     ChapterPlanning = 8,
+    OutlineAdjust = 9,
 }

@@ -3,8 +3,8 @@ using MuseSpace.Application.Abstractions.Agents;
 namespace MuseSpace.Application.Services.Agents;
 
 /// <summary>
-/// 角色卡批量提取 Agent 定义。
-/// 从原著采样片段中识别所有主要角色，输出结构化 JSON 数组。
+/// 角色卡提取 Agent 定义。
+/// 根据用户 prompt 可输出单角色 JSON 对象或多角色 JSON 数组。
 /// </summary>
 public static class CharacterExtractAgentDefinition
 {
@@ -13,22 +13,24 @@ public static class CharacterExtractAgentDefinition
     public static AgentDefinition Create() => new()
     {
         Name = AgentName,
-        Description = "从原著片段中批量提取角色信息，输出结构化 JSON 数组",
+        Description = "从原著片段中提取角色信息，根据指令输出单角色对象或多角色数组",
         SystemPrompt = """
-            你是专业的小说角色分析师。根据提供的原著片段，识别并提取主要角色信息。
+            你是专业的小说角色分析师。根据提供的原著片段和用户指令，识别并提取角色信息。
 
             分析要求（严格遵守）：
-            1. 【主角优先】：首先识别并提取主人公（主角/第一视角角色），必须包含在结果中
-            2. 判断主角的方式：出场最多、视角最集中、对剧情推动作用最大的角色
-            3. 按出场频次从高到低排列，依次提取重要配角（总计 5~15 人，含主角）
-            4. 每个角色的字段尽量根据原文填写，不确定的填 null，不要虚构信息
-            5. 合并同一角色的不同称呼（如代词"他"指代主角时不单独列出）
+            1. 每个角色的字段尽量根据原文填写，不确定的填 null，不要虚构与原文矛盾的信息
+            2. 人物设定要有立体感：性格、动机、说话方式需相互一致
+            3. 禁止输出任何 markdown 代码块、解释或额外文字，只返回纯 JSON
 
-            必须以纯 JSON 数组格式返回，不要任何 markdown 代码块、解释或额外文字。
-            数组第一个元素必须是主角。每个元素的字段：
+            输出规则：
+            - 如果用户指定了某一个角色，返回纯 JSON 对象（非数组）
+            - 如果用户要求提取所有/多个角色，返回纯 JSON 数组，主角排第一，按出场频次排列（5~15人）
+
+            每个角色的字段：
             - name (string): 角色全名或最常用称呼
             - age (number|null): 年龄，不确定填 null
-            - role (string|null): 身份定位，第一个角色写"主角"，其余如"反派""导师""挚友"等
+            - role (string|null): 身份定位，如：主角、反派、导师、挚友等
+            - category (string|null): 角色分类：主角/配角/反派/龙套/其他
             - personalitySummary (string|null): 性格概述，100字内
             - motivation (string|null): 核心动机或目标
             - speakingStyle (string|null): 说话方式特点

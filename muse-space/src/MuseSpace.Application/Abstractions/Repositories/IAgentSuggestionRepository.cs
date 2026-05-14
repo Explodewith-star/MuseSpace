@@ -18,4 +18,10 @@ public interface IAgentSuggestionRepository
     /// Applied 的建议已转为正式资产，不受原著删除影响。
     /// </summary>
     Task<int> DeleteBySourceNovelIdAsync(Guid novelId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 删除 TargetEntityId 匹配指定实体（如大纲 ID）的所有建议（物理删除）。
+    /// 用于大纲删除时清理关联的大纲规划建议，防止孤儿数据残留。
+    /// </summary>
+    Task<int> DeleteByTargetEntityIdAsync(Guid targetEntityId, CancellationToken cancellationToken = default);
 }

@@ -34,7 +34,9 @@ const emit = defineEmits<{
     width="400px"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <p class="confirm-message">{{ message }}</p>
+    <slot name="message">
+      <p class="confirm-message">{{ message }}</p>
+    </slot>
     <template #footer>
       <AppButton variant="secondary" @click="$emit('update:modelValue', false)">
         {{ cancelText }}

@@ -24,9 +24,10 @@ export function deleteCharacter(projectId: string, characterId: string): Promise
   return request.delete(`/projects/${projectId}/characters/${characterId}`)
 }
 
-export function extractCharacterFromNovel(
+export function generateCharacter(
   projectId: string,
-  query: string,
+  description: string,
+  fromNovel: boolean = false,
 ): Promise<ExtractCharacterResponse> {
-  return request.post(`/projects/${projectId}/characters/extract-from-novel`, { query })
+  return request.post(`/projects/${projectId}/characters/generate`, { description, fromNovel })
 }
