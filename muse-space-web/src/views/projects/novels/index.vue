@@ -6,9 +6,10 @@ import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
 import AppConfirm from '@/components/base/AppConfirm.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
+import { triggerAgentTask, type AgentType } from '@/api/agentTasks'
 import { getNovels, uploadNovel, deleteNovel, getNovelStatus } from '@/api/novels'
 import { useNovelImportProgress } from '@/composables/useNovelImportProgress'
-import { useAgentProgress } from '@/composables/useAgentProgress'
+import { useAgentProgress, type AgentProgressAsset } from '@/composables/useAgentProgress'
 import type { NovelResponse } from '@/types/models'
 
 // crypto.randomUUID() 在 HTTP（非安全上下文）下不可用，用兼容方案
@@ -49,15 +50,49 @@ const importProgress = useNovelImportProgress()
 type AssetExtractStage = 'started' | 'generating' | 'done' | 'failed' | null
 const assetExtractStage = ref<AssetExtractStage>(null)
 const assetExtractSummary = ref('')
+const assetExtractNovelId = ref<string | null>(null)
+const assetExtractAssets = ref<AgentProgressAsset[]>([])
+const retryingAgentTypes = ref<AgentType[]>([])
 const agentProgress = useAgentProgress()
+
+const completedAssetItems = computed(() =>
+  assetExtractAssets.value.filter((asset) => asset.status === 'succeeded'),
+)
+
+const failedAssetItems = computed(() =>
+  assetExtractAssets.value.filter((asset) => asset.status === 'failed' && asset.retryAgentType),
+)
 
 watch(
   () => agentProgress.latestEvent.value,
   (evt) => {
     if (!evt || evt.taskType !== 'asset-extract') return
+
     assetExtractStage.value = evt.stage as AssetExtractStage
-    if (evt.stage === 'done') assetExtractSummary.value = evt.summary ?? '资产提取完成'
-    if (evt.stage === 'failed') assetExtractSummary.value = evt.error ?? '提取失败'
+    assetExtractNovelId.value = evt.novelId ?? assetExtractNovelId.value
+    assetExtractAssets.value = evt.assets ?? []
+
+    if (evt.stage === 'started') {
+      assetExtractSummary.value = '正在启动角色/世界观/文风提取...'
+      retryingAgentTypes.value = []
+      return
+    }
+
+    if (evt.stage === 'generating') {
+      assetExtractSummary.value = evt.summary ?? 'AI 正在分析原著，提取角色、世界观规则和文风画像...'
+      retryingAgentTypes.value = []
+      return
+    }
+
+    if (evt.stage === 'done') {
+      assetExtractSummary.value = evt.summary ?? '资产提取完成'
+      retryingAgentTypes.value = []
+    }
+
+    if (evt.stage === 'failed') {
+      assetExtractSummary.value = evt.error ?? '提取失败'
+      retryingAgentTypes.value = []
+    }
   },
 )
 
@@ -392,6 +427,33 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function isRetrying(agentType: string | undefined): boolean {
+  if (!agentType) return false
+  return retryingAgentTypes.value.includes(agentType as AgentType)
+}
+
+async function retryFailedAsset(agentType: string | undefined) {
+  if (!agentType || isRetrying(agentType)) return
+
+  retryingAgentTypes.value = [...retryingAgentTypes.value, agentType as AgentType]
+  try {
+    await triggerAgentTask(projectId.value, {
+      agentType: agentType as AgentType,
+      novelId: assetExtractNovelId.value ?? undefined,
+    })
+  } finally {
+    retryingAgentTypes.value = retryingAgentTypes.value.filter((item) => item !== agentType)
+  }
+}
+
+function closeAssetExtractBanner() {
+  assetExtractStage.value = null
+  assetExtractSummary.value = ''
+  assetExtractAssets.value = []
+  assetExtractNovelId.value = null
+  retryingAgentTypes.value = []
+}
+
 onMounted(() => {
   fetchNovels()
   void agentProgress.joinProject(projectId.value)
@@ -469,14 +531,37 @@ onUnmounted(() => {
           'i-lucide-loader-2 banner-spin'
         ]"
       />
-      <span class="banner-text">
-        <template v-if="assetExtractStage === 'started'">正在启动角色/世界观/文风提取...</template>
-        <template v-else-if="assetExtractStage === 'generating'">AI 正在分析原著，提取角色、世界观规则和文风画像...</template>
-        <template v-else-if="assetExtractStage === 'done'">{{ assetExtractSummary }}，请前往建议中心查看</template>
-        <template v-else-if="assetExtractStage === 'failed'">提取失败：{{ assetExtractSummary }}</template>
-      </span>
+      <div class="banner-content">
+        <span class="banner-text">
+          <template v-if="assetExtractStage === 'started'">正在启动角色/世界观/文风提取...</template>
+          <template v-else-if="assetExtractStage === 'generating'">AI 正在分析原著，提取角色、世界观规则和文风画像...</template>
+          <template v-else>{{ assetExtractSummary }}</template>
+        </span>
+
+        <div v-if="assetExtractAssets.length" class="banner-assets">
+          <div
+            v-for="asset in assetExtractAssets"
+            :key="`${asset.assetType}-${asset.status}`"
+            :class="['banner-asset', `banner-asset--${asset.status}`]"
+          >
+            <div class="banner-asset__meta">
+              <span class="banner-asset__label">{{ asset.label }}</span>
+              <span class="banner-asset__message">{{ asset.message ?? `${asset.label}${asset.status === 'failed' ? '提取失败' : '提取完成'}` }}</span>
+            </div>
+            <AppButton
+              v-if="asset.status === 'failed' && asset.retryAgentType"
+              variant="secondary"
+              size="sm"
+              :loading="isRetrying(asset.retryAgentType)"
+              @click="retryFailedAsset(asset.retryAgentType)"
+            >
+              重试{{ asset.label }}
+            </AppButton>
+          </div>
+        </div>
+      </div>
       <button
-        v-if="assetExtractStage === 'done'"
+        v-if="assetExtractStage === 'done' || completedAssetItems.length > 0 || failedAssetItems.length > 0"
         class="banner-action"
         @click="router.push(`/projects/${projectId}/suggestions`)"
       >
@@ -484,7 +569,7 @@ onUnmounted(() => {
       </button>
       <button
         class="banner-close"
-        @click="assetExtractStage = null"
+        @click="closeAssetExtractBanner"
       >
         <i class="i-lucide-x" />
       </button>
@@ -773,7 +858,7 @@ onUnmounted(() => {
 /* ── 资产提取 banner ── */
 .extract-banner {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 10px 14px;
   border-radius: 8px;
@@ -794,9 +879,56 @@ onUnmounted(() => {
   color: var(--color-danger-text, #b91c1c);
 }
 
-.banner-text {
+.banner-content {
   flex: 1;
+  min-width: 0;
+}
+
+.banner-text {
+  display: block;
   line-height: 1.4;
+}
+
+.banner-assets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.banner-asset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.banner-asset--failed {
+  border: 1px solid rgba(185, 28, 28, 0.16);
+}
+
+.banner-asset--succeeded {
+  border: 1px solid rgba(21, 128, 61, 0.12);
+}
+
+.banner-asset__meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner-asset__label {
+  font-weight: 600;
+}
+
+.banner-asset__message {
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.88;
 }
 
 .banner-action {
@@ -835,5 +967,12 @@ onUnmounted(() => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+@media (max-width: 900px) {
+  .banner-asset {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

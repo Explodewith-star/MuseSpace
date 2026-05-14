@@ -3,12 +3,22 @@ import * as signalR from '@microsoft/signalr'
 
 export type AgentStage = 'started' | 'generating' | 'done' | 'failed'
 
+export interface AgentProgressAsset {
+  assetType: string
+  label: string
+  status: 'succeeded' | 'failed'
+  message?: string
+  retryAgentType?: string
+}
+
 export interface AgentProgressPayload {
   projectId: string
   taskType: string
   stage: AgentStage
   summary?: string
   error?: string
+  novelId?: string
+  assets?: AgentProgressAsset[]
 }
 
 export function useAgentProgress() {

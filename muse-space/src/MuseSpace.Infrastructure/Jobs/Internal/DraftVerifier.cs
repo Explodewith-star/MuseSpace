@@ -169,6 +169,34 @@ public static class DraftVerifier
         string draftText,
         List<DraftViolation> violations)
     {
+        var leakedFutureChapters = scope.FutureChapterSignatures
+            .Select(signature => new
+            {
+                Signature = signature,
+                Hits = signature.Signals
+                    .Where(signal => draftText.Contains(signal, StringComparison.Ordinal)
+                        && !scope.CurrentPlanText.Contains(signal, StringComparison.Ordinal))
+                    .Distinct()
+                    .Take(4)
+                    .ToList(),
+            })
+            .Where(item => item.Hits.Count >= 2
+                || (!string.IsNullOrWhiteSpace(item.Signature.Title)
+                    && draftText.Contains(item.Signature.Title, StringComparison.Ordinal)))
+            .Take(3)
+            .ToList();
+
+        if (leakedFutureChapters.Count > 0)
+        {
+            violations.Add(new DraftViolation(
+                DraftViolationType.FutureBeatLeak,
+                DraftViolationSeverity.Blocker,
+                string.Join("；", leakedFutureChapters.Select(item =>
+                    $"第{item.Signature.ChapterNumber}章命中 {string.Join("、", item.Hits.Take(3))}")),
+                "草稿只能完成当前章节计划，后续章节保留项不得提前展开"));
+            return;
+        }
+
         var futureText = string.Join("\n", scope.ReservedFutureBeats);
         if (string.IsNullOrWhiteSpace(futureText)) return;
 

@@ -7,6 +7,12 @@ namespace MuseSpace.Infrastructure.Jobs.Internal;
 
 public static partial class ChapterDraftScopeBuilder
 {
+    private static readonly string[] SignatureNoiseTerms =
+    [
+        "一个", "一种", "自己", "他们", "我们", "已经", "开始", "没有", "不是", "时候", "地方", "事情", "感觉",
+        "然后", "继续", "最终", "逐渐", "需要", "必须", "应该", "可以", "以及", "同时", "其中"
+    ];
+
     private static readonly string[] LocationMarkers =
     [
         "宿舍", "教室", "走廊", "操场", "校园", "学校", "办公室", "地下室", "地窖",
@@ -29,6 +35,11 @@ public static partial class ChapterDraftScopeBuilder
         var futureBeats = futureChapters
             .Select(FormatFutureChapter)
             .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+        var futureChapterSignatures = futureChapters
+            .Select(future => BuildFutureChapterSignature(future, currentPlanText))
+            .Where(signature => signature is not null)
+            .Cast<FutureChapterSignature>()
             .ToList();
         var revealLevel = chapter.AllowedRevealLevel ?? InferRevealLevel(chapter);
         var mode = outline.Mode;
@@ -55,6 +66,7 @@ public static partial class ChapterDraftScopeBuilder
             ContinuationAnchor = outline.ContinuationAnchor,
             ReservedFutureBeats = futureBeats,
             FutureChapters = futureChapters,
+            FutureChapterSignatures = futureChapterSignatures,
             BoundaryInstruction = boundaryInstruction,
         };
     }
@@ -145,6 +157,82 @@ public static partial class ChapterDraftScopeBuilder
         if (!string.IsNullOrWhiteSpace(chapter.Summary)) parts.Add($"概要：{chapter.Summary}");
         if (!string.IsNullOrWhiteSpace(chapter.Conflict)) parts.Add($"冲突：{chapter.Conflict}");
         return string.Join("；", parts);
+    }
+
+    private static FutureChapterSignature? BuildFutureChapterSignature(Chapter chapter, string currentPlanText)
+    {
+        var signals = new HashSet<string>(StringComparer.Ordinal);
+
+        AddSignatureSignal(signals, chapter.Title, currentPlanText);
+
+        foreach (var source in EnumerateFutureChapterSources(chapter))
+        {
+            foreach (var signal in ExtractSignatureSignals(source, currentPlanText))
+                signals.Add(signal);
+        }
+
+        if (signals.Count == 0)
+            return null;
+
+        return new FutureChapterSignature
+        {
+            ChapterNumber = chapter.Number,
+            Title = chapter.Title ?? $"第 {chapter.Number} 章",
+            Signals = signals
+                .OrderByDescending(signal => signal.Length)
+                .Take(8)
+                .ToList(),
+        };
+    }
+
+    private static IEnumerable<string> EnumerateFutureChapterSources(Chapter chapter)
+    {
+        if (!string.IsNullOrWhiteSpace(chapter.Goal))
+            yield return chapter.Goal;
+        if (!string.IsNullOrWhiteSpace(chapter.Summary))
+            yield return chapter.Summary;
+        if (!string.IsNullOrWhiteSpace(chapter.Conflict))
+            yield return chapter.Conflict;
+
+        foreach (var point in chapter.MustIncludePoints.Where(point => !string.IsNullOrWhiteSpace(point)))
+            yield return point;
+    }
+
+    private static IEnumerable<string> ExtractSignatureSignals(string text, string currentPlanText)
+    {
+        var normalized = text
+            .Replace("：", "，")
+            .Replace("；", "，")
+            .Replace("。", "，")
+            .Replace("、", "，")
+            .Replace("\n", "，");
+
+        foreach (var raw in normalized.Split('，', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var signal = raw.Trim(' ', '-', '《', '》', '【', '】', '“', '”', '"');
+            if (signal.Length is < 3 or > 24)
+                continue;
+            if (SignatureNoiseTerms.Any(term => signal.Contains(term, StringComparison.Ordinal)))
+                continue;
+            if (currentPlanText.Contains(signal, StringComparison.Ordinal))
+                continue;
+
+            yield return signal;
+        }
+    }
+
+    private static void AddSignatureSignal(HashSet<string> signals, string? value, string currentPlanText)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        var signal = value.Trim();
+        if (signal.Length is < 2 or > 20)
+            return;
+        if (currentPlanText.Contains(signal, StringComparison.Ordinal))
+            return;
+
+        signals.Add(signal);
     }
 
     private static bool ContainsAny(string text, params string[] terms)

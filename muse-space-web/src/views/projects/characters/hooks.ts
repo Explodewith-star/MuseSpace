@@ -54,6 +54,8 @@ export function initCharactersState() {
         forbiddenBehaviors: result.forbiddenBehaviors ?? '',
         currentState: result.currentState ?? '',
       })
+      editDrawerOpen.value = false
+      drawerOpen.value = true
       const hint = generateFromNovel.value
         ? `已从 ${result.sourceChunkCount} 个原著片段中提取，请检查并确认`
         : 'AI 已生成角色信息，请检查并修改'

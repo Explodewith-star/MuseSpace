@@ -12,7 +12,7 @@ Rules:
 - Write in the narrative perspective provided
 - Do not contradict established facts from previous chapters
 - Write ONLY the current chapter described in Scene Goal. Do not write previous chapters, later chapters, recaps, previews, or plot beats from other chapter outlines.
-- The Conflict section may include chapter boundary constraints and future reserved beats. These constraints are mandatory, not inspiration.
+- Chapter Boundary and Future Reserved Beats are hard constraints. They define what this chapter must stop before.
 - Treat any original-novel/reference material as background only. Never copy, paraphrase, rewrite, continue, or transplant its concrete scenes, sentences, or plot sequence unless the current Scene Goal explicitly asks for that exact event.
 
 ## instruction
@@ -85,6 +85,12 @@ Reference strength: {{reference_strength}}
 **Scene Goal:**
 {{scene_goal}}
 
+**Chapter Boundary:**
+{{chapter_boundary}}
+
+**Future Chapter Reserved Beats (forbidden to unfold in this chapter):**
+{{reserved_future_beats}}
+
 **Conflict:**
 {{conflict}}
 
@@ -96,6 +102,8 @@ Reference strength: {{reference_strength}}
 Use the above information as your creative context. Focus on the scene goal and ensure the conflict is reflected in the narrative. The emotion curve should guide the pacing.
 
 The Scene Goal is the source of truth for what happens in this output. Recent summaries, timelines, immutable facts, and original references are constraints only; they must not override the current chapter's number, title, goal, summary, conflict, or must-hit points.
+
+Treat Chapter Boundary and Future Chapter Reserved Beats as a save-time acceptance contract. If the draft would naturally progress into any reserved future beat, stop earlier and end on tension, hesitation, aftermath, or an unresolved beat inside the current chapter.
 
 If a future event, location, monster/ghost entity, death, fight, pursuit, rule explanation, or dimensional transition is not explicitly required by the current Scene Goal or must-hit points, keep it out of this chapter. You may foreshadow it only through ambiguous sensory details.
 

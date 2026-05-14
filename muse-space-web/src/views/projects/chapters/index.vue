@@ -44,6 +44,8 @@ const selectedOutline = computed(() =>
   outlines.value.find((o) => o.id === selectedOutlineId.value) ?? null,
 )
 const selectedOutlineChapters = computed(() => chapters.value)
+const hasSelectedOutline = computed(() => !!selectedOutline.value)
+const hasChapters = computed(() => chapters.value.length > 0)
 
 // ── Mode Tab + 批次子导航 ──────────────────────────────────
 const ALL_MODES: GenerationMode[] = [
@@ -249,7 +251,7 @@ async function loadContextStats() {
 
 // "继续规划" —— 仅用于已有大纲追加章节计划的场景
 function openPlanModal() {
-  planForm.mode = 'continue'
+  planForm.mode = hasChapters.value ? 'continue' : 'new'
   planForm.goal = ''
   planForm.chapterCount = selectedOutline.value?.targetChapterCount
     ? String(selectedOutline.value.targetChapterCount)
@@ -257,6 +259,27 @@ function openPlanModal() {
   loadContextStats()
   planModalOpen.value = true
 }
+
+const planActionLabel = computed(() => (hasChapters.value ? '继续规划' : 'AI 规划章节'))
+const planActionTitle = computed(() =>
+  hasChapters.value
+    ? '在当前大纲基础上继续 AI 规划更多章节'
+    : '为当前大纲发起首次 AI 章节规划',
+)
+const planModalTitle = computed(() => (hasChapters.value ? '继续规划大纲' : 'AI 规划章节'))
+const planHintText = computed(() =>
+  hasChapters.value
+    ? `当前大纲已有 ${chapters.value.length} 章，AI 会在此基础上继续规划后续章节。`
+    : '当前大纲还没有章节，AI 会基于大纲目标生成首批章节计划。',
+)
+const planGoalLabel = computed(() => (hasChapters.value ? '续写方向 *' : '故事目标 *'))
+const planGoalPlaceholder = computed(() =>
+  hasChapters.value
+    ? '描述接下来希望故事走向哪里，如：主角踏入皇城，与旧敌决战，最终揭开身世之谜...'
+    : '描述这条大纲希望展开成什么故事，如：主角在旧城鬼域中成长，逐步揭开家族秘密并对抗幕后黑手... ',
+)
+const planCountLabel = computed(() => (hasChapters.value ? '追加章节数' : '规划章节数'))
+const planSubmitLabel = computed(() => (hasChapters.value ? '开始规划' : '生成章节规划'))
 
 async function submitPlan() {
   if (!planForm.goal.trim()) return
@@ -814,14 +837,14 @@ watch(latestEvent, async (e) => {
           批量生成草稿
         </AppButton>
         <AppButton
-          v-if="chapters.length > 0"
+          v-if="hasSelectedOutline"
           variant="ghost"
           size="sm"
-          title="在当前大纲基础上继续 AI 规划更多章节"
+          :title="planActionTitle"
           @click="openPlanModal"
         >
           <i class="i-lucide-sparkles" />
-          继续规划
+          {{ planActionLabel }}
         </AppButton>
         <AppButton
           v-if="modeOutlines.length > 0"
@@ -988,7 +1011,7 @@ watch(latestEvent, async (e) => {
       v-else-if="!chapters.length"
       icon="i-lucide-book-text"
       :title="selectedOutline ? '当前大纲暂无章节' : '开始规划你的故事'"
-      :description="selectedOutline ? '点击「继续规划」让 AI 接续生成章节，或手动添加' : '点击「规划大纲」新建大纲，可选择是否立即让 AI 生成章节计划'"
+      :description="selectedOutline ? '点击「AI 规划章节」生成首批章节，或手动添加' : '点击「规划大纲」新建大纲，可选择是否立即让 AI 生成章节计划'"
     >
       <template #action>
         <div class="empty-actions">
@@ -996,10 +1019,16 @@ watch(latestEvent, async (e) => {
             <i class="i-lucide-sparkles" />
             规划大纲
           </AppButton>
-          <AppButton v-else variant="ghost" @click="openCreate">
-            <i class="i-lucide-plus" />
-            手动添加章节
-          </AppButton>
+          <template v-else>
+            <AppButton @click="openPlanModal">
+              <i class="i-lucide-sparkles" />
+              {{ planActionLabel }}
+            </AppButton>
+            <AppButton variant="ghost" @click="openCreate">
+              <i class="i-lucide-plus" />
+              手动添加章节
+            </AppButton>
+          </template>
         </div>
       </template>
     </AppEmpty>
@@ -1082,7 +1111,7 @@ watch(latestEvent, async (e) => {
     />
 
     <!-- AI 大纲规划弹窗（继续规划：已有章节追加） -->
-    <AppModal v-model="planModalOpen" title="继续规划大纲" width="560px">
+    <AppModal v-model="planModalOpen" :title="planModalTitle" width="560px">
       <div class="plan-form">
         <div v-if="selectedOutline" class="plan-outline-card">
           <div>
@@ -1095,7 +1124,7 @@ watch(latestEvent, async (e) => {
         </div>
 
         <p class="plan-hint">
-          当前大纲已有 <strong>{{ chapters.length }}</strong> 章，AI 会在此基础上继续规划后续章节。
+          {{ planHintText }}
         </p>
 
         <!-- 上下文统计 -->
@@ -1109,14 +1138,14 @@ watch(latestEvent, async (e) => {
 
         <AppTextarea
           v-model="planForm.goal"
-          label="续写方向 *"
-          placeholder="描述接下来希望故事走向哪里，如：主角踏入皇城，与旧敌决战，最终揭开身世之谜..."
+          :label="planGoalLabel"
+          :placeholder="planGoalPlaceholder"
           :rows="4"
         />
 
         <AppInput
           v-model="planForm.chapterCount"
-          label="追加章节数"
+          :label="planCountLabel"
           type="number"
           placeholder="10"
         />
@@ -1129,7 +1158,7 @@ watch(latestEvent, async (e) => {
         <AppButton variant="ghost" @click="planModalOpen = false">取消</AppButton>
         <AppButton :loading="planLoading" :disabled="!planForm.goal.trim()" @click="submitPlan">
           <i class="i-lucide-sparkles" />
-          开始规划
+          {{ planSubmitLabel }}
         </AppButton>
       </template>
     </AppModal>

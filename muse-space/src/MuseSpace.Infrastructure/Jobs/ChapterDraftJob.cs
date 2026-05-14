@@ -214,12 +214,6 @@ public sealed class ChapterDraftJob
         bool includeNovelContext,
         GenerateChapterDraftRequest? options)
     {
-        var conflictParts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(chapter.Conflict))
-            conflictParts.Add(chapter.Conflict!);
-        if (!string.IsNullOrWhiteSpace(boundaryInstruction))
-            conflictParts.Add("章节边界约束：\n" + boundaryInstruction);
-
         var request = new SkillRequest
         {
             TaskType = "scene-draft",
@@ -227,8 +221,10 @@ public sealed class ChapterDraftJob
             Parameters = new Dictionary<string, string>
             {
                 ["SceneGoal"] = sceneGoal,
-                ["Conflict"] = string.Join("\n\n", conflictParts),
+                ["Conflict"] = chapter.Conflict ?? string.Empty,
                 ["EmotionCurve"] = chapter.EmotionCurve ?? string.Empty,
+                ["ChapterBoundary"] = boundaryInstruction,
+                ["ReservedFutureBeats"] = BuildReservedFutureBeatText(scope),
                 ["ChapterId"] = chapterId.ToString(),
                 ["OutlineId"] = scope.OutlineId.ToString(),
                 ["InvolvedCharacterIds"] = chapter.KeyCharacterIds is { Count: > 0 }
@@ -250,6 +246,15 @@ public sealed class ChapterDraftJob
         };
 
         return _orchestrator.ExecuteAsync(request);
+    }
+
+    private static string BuildReservedFutureBeatText(ChapterDraftScope scope)
+    {
+        if (scope.FutureChapterSignatures.Count == 0)
+            return string.Empty;
+
+        return string.Join("\n", scope.FutureChapterSignatures.Select(signature =>
+            $"- 第 {signature.ChapterNumber} 章《{signature.Title}》保留项：{string.Join(" / ", signature.Signals.Take(4))}"));
     }
 
     private static bool ShouldIncludeNovelContext(

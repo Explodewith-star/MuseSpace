@@ -85,6 +85,8 @@ public sealed class SceneDraftSkill : ISkill
                 ["scene_goal"] = storyContext.SceneGoal,
                 ["conflict"] = storyContext.Conflict ?? string.Empty,
                 ["emotion_curve"] = storyContext.EmotionCurve ?? string.Empty,
+                ["chapter_boundary"] = request.Parameters.GetValueOrDefault("ChapterBoundary", string.Empty),
+                ["reserved_future_beats"] = request.Parameters.GetValueOrDefault("ReservedFutureBeats", string.Empty),
                 ["novel_context"] = storyContext.NovelContextSnippets.Count > 0
                     ? string.Join("\n\n---\n\n", storyContext.NovelContextSnippets)
                     : string.Empty,

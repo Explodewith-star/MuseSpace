@@ -36,6 +36,51 @@ public sealed class DraftVerifierTests
     }
 
     [Fact]
+    public void Verify_BlocksDraftThatConsumesMultipleFutureChapters()
+    {
+        var scope = NewScope(
+            currentPlanText: "标题：午后茶局\n概要：角色在客厅中试探，最后只停在同意留下喝茶。",
+            reservedFutureBeats:
+            [
+                "第 2 章《指尖试探》；概要：角色借机触碰手背，气氛升温。",
+                "第 3 章《理智松动》；概要：角色默认亲吻，关系失衡。",
+                "第 4 章《越界时刻》；概要：角色被压倒在沙发，关系彻底越界。"
+            ],
+            futureChapterSignatures:
+            [
+                new FutureChapterSignature
+                {
+                    ChapterNumber = 2,
+                    Title = "指尖试探",
+                    Signals = ["触碰手背", "气氛升温"],
+                },
+                new FutureChapterSignature
+                {
+                    ChapterNumber = 3,
+                    Title = "理智松动",
+                    Signals = ["默认亲吻", "关系失衡"],
+                },
+                new FutureChapterSignature
+                {
+                    ChapterNumber = 4,
+                    Title = "越界时刻",
+                    Signals = ["压倒在沙发", "彻底越界"],
+                }
+            ],
+            allowedRevealLevel: ChapterRevealLevel.DirectAnomaly);
+
+        var result = DraftVerifier.Verify(
+            scope,
+            "两人喝茶后很快触碰手背，随后默认亲吻，最后又被压倒在沙发上，关系在当晚彻底越界。");
+
+        Assert.False(result.IsPassed);
+        Assert.Contains(result.Violations, v =>
+            v.Type == DraftViolationType.FutureBeatLeak
+            && v.Evidence.Contains("第2章", StringComparison.Ordinal)
+            && v.Evidence.Contains("第4章", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Verify_DoesNotTreatGenericGenreTermsAsFutureBeatLeak()
     {
         var scope = NewScope(
@@ -97,6 +142,7 @@ public sealed class DraftVerifierTests
         string currentPlanText = "",
         List<string>? requiredBeats = null,
         List<string>? reservedFutureBeats = null,
+        List<FutureChapterSignature>? futureChapterSignatures = null,
         ChapterRevealLevel allowedRevealLevel = ChapterRevealLevel.ForeshadowOnly)
         => new()
         {
@@ -107,6 +153,7 @@ public sealed class DraftVerifierTests
             CurrentPlanText = currentPlanText,
             RequiredBeats = requiredBeats ?? [],
             ReservedFutureBeats = reservedFutureBeats ?? [],
+            FutureChapterSignatures = futureChapterSignatures ?? [],
             AllowedRevealLevel = allowedRevealLevel,
             GenerationMode = GenerationMode.Original,
             DivergencePolicy = DivergencePolicy.SoftCanon,

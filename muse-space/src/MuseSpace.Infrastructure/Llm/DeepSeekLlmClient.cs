@@ -11,6 +11,8 @@ namespace MuseSpace.Infrastructure.Llm;
 /// </summary>
 public sealed class DeepSeekLlmClient
 {
+    private const int MaxAttempts = 3;
+
     private readonly HttpClient _httpClient;
     private readonly DeepSeekOptions _options;
     private readonly ILogger<DeepSeekLlmClient> _logger;
@@ -45,14 +47,7 @@ public sealed class DeepSeekLlmClient
         HttpResponseMessage response;
         try
         {
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
-            {
-                Content = JsonContent.Create(request)
-            };
-            response = await _httpClient.SendAsync(
-                httpRequest,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
+            response = await SendWithRetryAsync(request, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -85,5 +80,59 @@ public sealed class DeepSeekLlmClient
             InputTokens = result.PromptTokens,
             OutputTokens = result.CompletionTokens
         };
+    }
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(
+        ChatCompletionRequest request,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastException = null;
+
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
+        {
+            try
+            {
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+                {
+                    Content = JsonContent.Create(request)
+                };
+
+                return await _httpClient.SendAsync(
+                    httpRequest,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (IsTransient(ex, cancellationToken) && attempt < MaxAttempts)
+            {
+                lastException = ex;
+                _logger.LogWarning(ex,
+                    "DeepSeek request failed on attempt {Attempt}/{MaxAttempts}, retrying...",
+                    attempt,
+                    MaxAttempts);
+                await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                break;
+            }
+        }
+
+        throw lastException ?? new InvalidOperationException("DeepSeek request failed unexpectedly.");
+    }
+
+    private static bool IsTransient(Exception ex, CancellationToken cancellationToken)
+    {
+        if (ex is HttpRequestException)
+        {
+            return true;
+        }
+
+        if (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return true;
+        }
+
+        return false;
     }
 }

@@ -90,7 +90,10 @@ public sealed class ExtractNovelAssetsJob
         }
         await ApplyUserLlmPreferenceAsync(effectiveUserId);
 
-        await _progressNotifier.NotifyStartedAsync(novel.StoryProjectId, taskType);
+        await _progressNotifier.NotifyStartedAsync(
+            novel.StoryProjectId,
+            taskType,
+            BuildProgressDetails(novelId));
 
         var bgTaskId = await _taskProgress.StartAsync(
             effectiveUserId, novel.StoryProjectId,
@@ -107,27 +110,53 @@ public sealed class ExtractNovelAssetsJob
             _logger.LogInformation("[AssetExtract] Sampled {Count} chunks, total chars {Length}",
                 sampled.Count, sampledText.Length);
 
+            var results = new List<AssetExtractStepResult>(capacity: 3);
+
             // 2. 角色提取（每次独立 RunId，避免 EF Core tracking 冲突）
-            await _progressNotifier.NotifyGeneratingAsync(novel.StoryProjectId, taskType);
+            await _progressNotifier.NotifyGeneratingAsync(
+                novel.StoryProjectId,
+                taskType,
+                BuildProgressDetails(novelId));
             await _taskProgress.ReportProgressAsync(bgTaskId, 20, "正在提取角色...");
-            await ExtractCharactersAsync(sampledText, novel.StoryProjectId, novelId,
-                new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId });
+            results.Add(await ExtractCharactersAsync(sampledText, novel.StoryProjectId, novelId,
+                new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId }));
 
             // 3. 世界观提取
-            await _progressNotifier.NotifyGeneratingAsync(novel.StoryProjectId, taskType);
+            await _progressNotifier.NotifyGeneratingAsync(
+                novel.StoryProjectId,
+                taskType,
+                BuildProgressDetails(novelId, [.. results]));
             await _taskProgress.ReportProgressAsync(bgTaskId, 50, "正在提取世界观...");
-            await ExtractWorldRulesAsync(sampledText, novel.StoryProjectId, novelId,
-                new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId });
+            results.Add(await ExtractWorldRulesAsync(sampledText, novel.StoryProjectId, novelId,
+                new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId }));
 
             // 4. 文风提取
-            await _progressNotifier.NotifyGeneratingAsync(novel.StoryProjectId, taskType);
+            await _progressNotifier.NotifyGeneratingAsync(
+                novel.StoryProjectId,
+                taskType,
+                BuildProgressDetails(novelId, [.. results]));
             await _taskProgress.ReportProgressAsync(bgTaskId, 80, "正在提取文风...");
-            await ExtractStyleProfileAsync(sampledText, novel.StoryProjectId, novelId,
-                new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId });
+            results.Add(await ExtractStyleProfileAsync(sampledText, novel.StoryProjectId, novelId,
+                new AgentRunContext { UserId = userId, ProjectId = novel.StoryProjectId }));
 
-            await _progressNotifier.NotifyDoneAsync(novel.StoryProjectId, taskType, "资产提取完成，请前往建议中心查看");
-            await _taskProgress.CompleteAsync(bgTaskId, "资产提取完成");
-            _logger.LogInformation("[AssetExtract] Completed for novel {NovelId}", novelId);
+            var summary = BuildAssetExtractSummary(results);
+            var details = BuildProgressDetails(novelId, [.. results]);
+            if (results.All(r => r.Success))
+            {
+                await _progressNotifier.NotifyDoneAsync(novel.StoryProjectId, taskType, summary, details);
+                await _taskProgress.CompleteAsync(bgTaskId, summary);
+            }
+            else
+            {
+                await _progressNotifier.NotifyFailedAsync(novel.StoryProjectId, taskType, summary, details);
+                await _taskProgress.FailAsync(bgTaskId, summary);
+            }
+
+            _logger.LogInformation(
+                "[AssetExtract] Completed for novel {NovelId}, success={SuccessCount}/{TotalCount}",
+                novelId,
+                results.Count(r => r.Success),
+                results.Count);
 
             // 链式触发：结局摘要 + 角色末态快照生成（Module E+）
             BackgroundJob.Enqueue<NovelEndingSummaryJob>(j => j.ExecuteAsync(novelId, userId, null));
@@ -135,7 +164,11 @@ public sealed class ExtractNovelAssetsJob
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AssetExtract] Failed for novel {NovelId}", novelId);
-            await _progressNotifier.NotifyFailedAsync(novel.StoryProjectId, taskType, "资产提取失败：" + ex.Message);
+            await _progressNotifier.NotifyFailedAsync(
+                novel.StoryProjectId,
+                taskType,
+                "资产提取失败：" + ex.Message,
+                BuildProgressDetails(novelId));
             await _taskProgress.FailAsync(bgTaskId, "资产提取失败：" + ex.Message);
         }
     }
@@ -160,40 +193,50 @@ public sealed class ExtractNovelAssetsJob
             return;
         }
 
-        await _progressNotifier.NotifyStartedAsync(projectId, taskType);
+        await _progressNotifier.NotifyStartedAsync(projectId, taskType, BuildProgressDetails(novel.Id));
         try
         {
             var sampledText = await BuildSampledTextAsync(novel.Id);
             var ctx = new AgentRunContext { UserId = effectiveUserId, ProjectId = projectId };
+            var results = new List<AssetExtractStepResult>(capacity: agentType == "extract-all" ? 3 : 1);
 
-            await _progressNotifier.NotifyGeneratingAsync(projectId, taskType);
+            await _progressNotifier.NotifyGeneratingAsync(projectId, taskType, BuildProgressDetails(novel.Id));
 
             switch (agentType)
             {
                 case "character-extract":
-                    await ExtractCharactersAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    results.Add(await ExtractCharactersAsync(sampledText, projectId, novel.Id, ctx, userInput));
                     break;
                 case "worldrule-extract":
-                    await ExtractWorldRulesAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    results.Add(await ExtractWorldRulesAsync(sampledText, projectId, novel.Id, ctx, userInput));
                     break;
                 case "styleprofile-extract":
-                    await ExtractStyleProfileAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    results.Add(await ExtractStyleProfileAsync(sampledText, projectId, novel.Id, ctx, userInput));
                     break;
                 case "extract-all":
-                    await ExtractCharactersAsync(sampledText, projectId, novel.Id, ctx, userInput);
-                    await ExtractWorldRulesAsync(sampledText, projectId, novel.Id, ctx, userInput);
-                    await ExtractStyleProfileAsync(sampledText, projectId, novel.Id, ctx, userInput);
+                    results.Add(await ExtractCharactersAsync(sampledText, projectId, novel.Id, ctx, userInput));
+                    results.Add(await ExtractWorldRulesAsync(sampledText, projectId, novel.Id, ctx, userInput));
+                    results.Add(await ExtractStyleProfileAsync(sampledText, projectId, novel.Id, ctx, userInput));
                     break;
                 default:
                     throw new InvalidOperationException($"unsupported agentType: {agentType}");
             }
 
-            await _progressNotifier.NotifyDoneAsync(projectId, taskType, "Agent 任务完成，请前往建议中心查看");
+            var summary = BuildAssetExtractSummary(results);
+            var details = BuildProgressDetails(novel.Id, [.. results]);
+            if (results.All(r => r.Success))
+            {
+                await _progressNotifier.NotifyDoneAsync(projectId, taskType, summary, details);
+            }
+            else
+            {
+                await _progressNotifier.NotifyFailedAsync(projectId, taskType, summary, details);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[MenuAgent] Single agent {AgentType} failed", agentType);
-            await _progressNotifier.NotifyFailedAsync(projectId, taskType, "Agent 任务失败：" + ex.Message);
+            await _progressNotifier.NotifyFailedAsync(projectId, taskType, "Agent 任务失败：" + ex.Message, BuildProgressDetails(novel.Id));
         }
     }
 
@@ -232,7 +275,7 @@ public sealed class ExtractNovelAssetsJob
 
     // ── 角色提取 ────────────────────────────────────────────
 
-    private async Task ExtractCharactersAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
+    private async Task<AssetExtractStepResult> ExtractCharactersAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
     {
         var extra = string.IsNullOrWhiteSpace(userInput) ? "" : $"\n\n## 补充约束\n\n{userInput!.Trim()}";
         var userPrompt = $"""
@@ -247,7 +290,7 @@ public sealed class ExtractNovelAssetsJob
         if (!result.Success)
         {
             _logger.LogWarning("[AssetExtract] Character extraction failed: {Error}", result.ErrorMessage);
-            return;
+            return AssetStepFailed("character", "角色", "character-extract", result.ErrorMessage ?? "角色提取失败");
         }
 
         var json = CleanJson(result.Output);
@@ -265,7 +308,7 @@ public sealed class ExtractNovelAssetsJob
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[AssetExtract] Failed to parse character JSON");
-            return;
+            return AssetStepFailed("character", "角色", "character-extract", "角色提取结果解析失败");
         }
 
         foreach (var item in items.Where(i => !string.IsNullOrWhiteSpace(i.Name)))
@@ -287,11 +330,12 @@ public sealed class ExtractNovelAssetsJob
 
         _logger.LogInformation("[AssetExtract] Extracted {Count} characters for project {ProjectId}",
             items.Count, projectId);
+    return AssetStepSucceeded("character", "角色", "character-extract", $"已生成 {items.Count} 条候选角色");
     }
 
     // ── 世界观提取 ────────────────────────────────────────────────────────
 
-    private async Task ExtractWorldRulesAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
+    private async Task<AssetExtractStepResult> ExtractWorldRulesAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
     {
         var extra = string.IsNullOrWhiteSpace(userInput) ? "" : $"\n\n## 补充约束\n\n{userInput!.Trim()}";
         var userPrompt = $"""
@@ -306,7 +350,7 @@ public sealed class ExtractNovelAssetsJob
         if (!result.Success)
         {
             _logger.LogWarning("[AssetExtract] WorldRule extraction failed: {Error}", result.ErrorMessage);
-            return;
+            return AssetStepFailed("worldrule", "世界观规则", "worldrule-extract", result.ErrorMessage ?? "世界观规则提取失败");
         }
 
         var json = CleanJson(result.Output);
@@ -320,7 +364,7 @@ public sealed class ExtractNovelAssetsJob
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[AssetExtract] Failed to parse world rule JSON");
-            return;
+            return AssetStepFailed("worldrule", "世界观规则", "worldrule-extract", "世界观规则提取结果解析失败");
         }
 
         foreach (var item in items.Where(i => !string.IsNullOrWhiteSpace(i.Title)))
@@ -342,11 +386,12 @@ public sealed class ExtractNovelAssetsJob
 
         _logger.LogInformation("[AssetExtract] Extracted {Count} world rules for project {ProjectId}",
             items.Count, projectId);
+    return AssetStepSucceeded("worldrule", "世界观规则", "worldrule-extract", $"已生成 {items.Count} 条候选世界观规则");
     }
 
     // ── 文风提取 ──────────────────────────────────────────────────────────
 
-    private async Task ExtractStyleProfileAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
+    private async Task<AssetExtractStepResult> ExtractStyleProfileAsync(string sampledText, Guid projectId, Guid novelId, AgentRunContext ctx, string? userInput = null)
     {
         var extra = string.IsNullOrWhiteSpace(userInput) ? "" : $"\n\n## 补充约束\n\n{userInput!.Trim()}";
         var userPrompt = $"""
@@ -361,7 +406,7 @@ public sealed class ExtractNovelAssetsJob
         if (!result.Success)
         {
             _logger.LogWarning("[AssetExtract] StyleProfile extraction failed: {Error}", result.ErrorMessage);
-            return;
+            return AssetStepFailed("styleprofile", "文风画像", "styleprofile-extract", result.ErrorMessage ?? "文风画像提取失败");
         }
 
         var json = CleanJson(result.Output);
@@ -376,6 +421,7 @@ public sealed class ExtractNovelAssetsJob
             sourceNovelId: novelId);
 
         _logger.LogInformation("[AssetExtract] Extracted style profile for project {ProjectId}", projectId);
+        return AssetStepSucceeded("styleprofile", "文风画像", "styleprofile-extract", "已生成 1 条候选文风画像");
     }
 
     // ── 工具方法 ──────────────────────────────────────────────────────────
@@ -419,6 +465,67 @@ public sealed class ExtractNovelAssetsJob
         if (json.StartsWith("```"))
             json = Regex.Replace(json, @"```\w*\n?", "").Trim('`').Trim();
         return json;
+    }
+
+    private static AgentProgressDetails BuildProgressDetails(Guid novelId, params AssetExtractStepResult[] results)
+    {
+        return new AgentProgressDetails
+        {
+            NovelId = novelId,
+            Assets = results.Length == 0
+                ? null
+                : results.Select(result => new AgentProgressAssetResult
+                {
+                    AssetType = result.AssetType,
+                    Label = result.Label,
+                    Status = result.Success ? "succeeded" : "failed",
+                    Message = result.Message,
+                    RetryAgentType = result.RetryAgentType,
+                }).ToList(),
+        };
+    }
+
+    private static string BuildAssetExtractSummary(IReadOnlyCollection<AssetExtractStepResult> results)
+    {
+        var failed = results.Where(r => !r.Success).ToList();
+        if (failed.Count == 0)
+        {
+            return "角色、世界观规则、文风画像提取完成，请前往建议中心查看";
+        }
+
+        var succeeded = results.Where(r => r.Success).ToList();
+        var failedText = string.Join('、', failed.Select(r => r.Label)) + "提取失败";
+        if (succeeded.Count == 0)
+        {
+            return failedText + "，可稍后重试对应失败项";
+        }
+
+        var succeededText = string.Join('、', succeeded.Select(r => r.Label)) + "已完成";
+        return failedText + "；" + succeededText + "，可直接重试失败项";
+    }
+
+    private static AssetExtractStepResult AssetStepSucceeded(string assetType, string label, string retryAgentType, string message)
+    {
+        return new AssetExtractStepResult
+        {
+            AssetType = assetType,
+            Label = label,
+            RetryAgentType = retryAgentType,
+            Success = true,
+            Message = message,
+        };
+    }
+
+    private static AssetExtractStepResult AssetStepFailed(string assetType, string label, string retryAgentType, string message)
+    {
+        return new AssetExtractStepResult
+        {
+            AssetType = assetType,
+            Label = label,
+            RetryAgentType = retryAgentType,
+            Success = false,
+            Message = message,
+        };
     }
 
     private async Task ApplyUserLlmPreferenceAsync(Guid? userId)
@@ -482,5 +589,18 @@ public sealed class ExtractNovelAssetsJob
         public string? Description { get; set; }
         public int Priority { get; set; } = 3;
         public bool IsHardConstraint { get; set; }
+    }
+
+    private sealed class AssetExtractStepResult
+    {
+        public required string AssetType { get; init; }
+
+        public required string Label { get; init; }
+
+        public required string RetryAgentType { get; init; }
+
+        public required bool Success { get; init; }
+
+        public required string Message { get; init; }
     }
 }

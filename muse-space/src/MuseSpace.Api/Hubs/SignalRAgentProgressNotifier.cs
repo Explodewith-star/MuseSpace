@@ -18,31 +18,51 @@ public sealed class SignalRAgentProgressNotifier : IAgentProgressNotifier
         _registry = registry;
     }
 
-    public Task NotifyStartedAsync(Guid projectId, string taskType, CancellationToken ct = default)
+    public Task NotifyStartedAsync(Guid projectId, string taskType, AgentProgressDetails? details = null, CancellationToken ct = default)
     {
         _registry.Upsert(projectId, taskType, "started");
         return _hub.Clients.Group(projectId.ToString())
-            .SendAsync("AgentStarted", new { projectId, taskType, stage = "started" }, ct);
+            .SendAsync("AgentStarted", BuildPayload(projectId, taskType, "started", details: details), ct);
     }
 
-    public Task NotifyGeneratingAsync(Guid projectId, string taskType, CancellationToken ct = default)
+    public Task NotifyGeneratingAsync(Guid projectId, string taskType, AgentProgressDetails? details = null, CancellationToken ct = default)
     {
         _registry.Upsert(projectId, taskType, "generating");
         return _hub.Clients.Group(projectId.ToString())
-            .SendAsync("AgentGenerating", new { projectId, taskType, stage = "generating" }, ct);
+            .SendAsync("AgentGenerating", BuildPayload(projectId, taskType, "generating", details: details), ct);
     }
 
-    public Task NotifyDoneAsync(Guid projectId, string taskType, string summary, CancellationToken ct = default)
+    public Task NotifyDoneAsync(Guid projectId, string taskType, string summary, AgentProgressDetails? details = null, CancellationToken ct = default)
     {
         _registry.Remove(projectId, taskType);
         return _hub.Clients.Group(projectId.ToString())
-            .SendAsync("AgentDone", new { projectId, taskType, stage = "done", summary }, ct);
+            .SendAsync("AgentDone", BuildPayload(projectId, taskType, "done", summary: summary, details: details), ct);
     }
 
-    public Task NotifyFailedAsync(Guid projectId, string taskType, string error, CancellationToken ct = default)
+    public Task NotifyFailedAsync(Guid projectId, string taskType, string error, AgentProgressDetails? details = null, CancellationToken ct = default)
     {
         _registry.Remove(projectId, taskType);
         return _hub.Clients.Group(projectId.ToString())
-            .SendAsync("AgentFailed", new { projectId, taskType, stage = "failed", error }, ct);
+            .SendAsync("AgentFailed", BuildPayload(projectId, taskType, "failed", error: error, details: details), ct);
+    }
+
+    private static object BuildPayload(
+        Guid projectId,
+        string taskType,
+        string stage,
+        string? summary = null,
+        string? error = null,
+        AgentProgressDetails? details = null)
+    {
+        return new
+        {
+            projectId,
+            taskType,
+            stage,
+            summary,
+            error,
+            novelId = details?.NovelId,
+            assets = details?.Assets,
+        };
     }
 }

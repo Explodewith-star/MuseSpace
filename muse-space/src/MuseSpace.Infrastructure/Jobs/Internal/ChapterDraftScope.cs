@@ -3,6 +3,13 @@ using MuseSpace.Domain.Enums;
 
 namespace MuseSpace.Infrastructure.Jobs.Internal;
 
+public sealed class FutureChapterSignature
+{
+    public int ChapterNumber { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public List<string> Signals { get; init; } = [];
+}
+
 public sealed class ChapterDraftScope
 {
     public Guid ProjectId { get; init; }
@@ -23,6 +30,7 @@ public sealed class ChapterDraftScope
     public string? ContinuationAnchor { get; init; }
     public List<string> ReservedFutureBeats { get; init; } = [];
     public List<Chapter> FutureChapters { get; init; } = [];
+    public List<FutureChapterSignature> FutureChapterSignatures { get; init; } = [];
     public string BoundaryInstruction { get; init; } = string.Empty;
 
     public string ToLogSummary()
