@@ -13,5 +13,4 @@ public sealed class UpdateCharacterRequest
     public string? PrivateSecrets { get; init; }
     public string? CurrentState { get; init; }
     public string? Tags { get; init; }
-    public string? Category { get; init; }
 }

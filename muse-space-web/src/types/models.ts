@@ -68,12 +68,14 @@ export interface UpdateChapterRequest {
 export interface CharacterResponse {
   id: string
   storyProjectId: string
+  /** null = 原著角色池，有值 = 已归属到某大纲 */
+  storyOutlineId: string | null
   /** null = 原创角色，有值 = 从该原著提取 */
   sourceNovelId?: string | null
   name: string
   age?: number
+  /** 身份定位：主角/配角/反派/龙套/其他 */
   role?: string
-  category?: string
   personalitySummary?: string
   motivation?: string
   speakingStyle?: string
@@ -86,7 +88,6 @@ export interface CreateCharacterRequest {
   name: string
   age?: number
   role?: string
-  category?: string
   personalitySummary?: string
   motivation?: string
   speakingStyle?: string
@@ -101,7 +102,6 @@ export interface UpdateCharacterRequest {
   name?: string
   age?: number
   role?: string
-  category?: string
   personalitySummary?: string
   motivation?: string
   speakingStyle?: string
@@ -115,8 +115,8 @@ export interface UpdateCharacterRequest {
 export interface ExtractCharacterResponse {
   name: string
   age?: number
+  /** 身份定位：主角/配角/反派/龙套/其他 */
   role?: string
-  category?: string
   personalitySummary?: string
   motivation?: string
   speakingStyle?: string
@@ -404,4 +404,14 @@ export interface UpdateStoryOutlineRequest {
   divergencePolicy?: DivergencePolicy
   targetChapterCount?: number
   outlineSummary?: string
+}
+
+export interface ImportFromPoolRequest {
+  /** 要引入到大纲的角色 ID 列表（来自原著角色池） */
+  characterIds: string[]
+}
+
+export interface CopyCharactersRequest {
+  characterIds: string[]
+  targetOutlineId: string
 }

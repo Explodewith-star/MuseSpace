@@ -1,15 +1,15 @@
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCharacters, createCharacter, updateCharacter, deleteCharacter, generateCharacter } from '@/api/characters'
+import { getCharacters, createCharacter, updateCharacter, deleteCharacter, generateCharacter, copyCharactersToOutline, getCharacterPool, importFromPool } from '@/api/characters'
+import { getStoryOutlines } from '@/api/outlines'
 import { useToast } from '@/composables/useToast'
-import type { CharacterResponse } from '@/types/models'
+import type { CharacterResponse, StoryOutlineResponse } from '@/types/models'
 import type { CreateCharacterForm } from './types'
 
 const emptyForm = (): CreateCharacterForm => ({
   name: '',
   age: '',
   role: '',
-  category: '',
   personalitySummary: '',
   motivation: '',
   speakingStyle: '',
@@ -25,6 +25,28 @@ export function initCharactersState() {
   const toast = useToast()
   const projectId = route.params.id as string
 
+  // ── 大纲选择 ──────────────────────────────────────────
+  const outlines = ref<StoryOutlineResponse[]>([])
+  const currentOutlineId = ref<string>('')
+
+  const currentOutline = computed(() =>
+    outlines.value.find(o => o.id === currentOutlineId.value),
+  )
+
+  async function loadOutlines(): Promise<void> {
+    outlines.value = await getStoryOutlines(projectId)
+    // 默认选中第一个大纲
+    if (outlines.value.length > 0 && !currentOutlineId.value) {
+      const defaultOutline = outlines.value.find(o => o.isDefault)
+      currentOutlineId.value = defaultOutline?.id ?? outlines.value[0].id
+    }
+  }
+
+  async function switchOutline(outlineId: string): Promise<void> {
+    currentOutlineId.value = outlineId
+    await loadCharacters()
+  }
+
   const characters = ref<CharacterResponse[]>([])
   const loading = ref(false)
 
@@ -39,15 +61,14 @@ export function initCharactersState() {
 
   async function generateFromDesc(): Promise<void> {
     const desc = generateDesc.value.trim()
-    if (!desc) return
+    if (!desc || !currentOutlineId.value) return
     generateLoading.value = true
     try {
-      const result = await generateCharacter(projectId, desc, generateFromNovel.value)
+      const result = await generateCharacter(projectId, currentOutlineId.value, desc, generateFromNovel.value)
       Object.assign(createForm, {
         name: result.name ?? '',
         age: result.age != null ? String(result.age) : '',
         role: result.role ?? '',
-        category: result.category ?? '',
         personalitySummary: result.personalitySummary ?? '',
         motivation: result.motivation ?? '',
         speakingStyle: result.speakingStyle ?? '',
@@ -71,9 +92,10 @@ export function initCharactersState() {
   const deleteLoading = ref(false)
 
   async function loadCharacters(): Promise<void> {
+    if (!currentOutlineId.value) return
     loading.value = true
     try {
-      characters.value = await getCharacters(projectId)
+      characters.value = await getCharacters(projectId, currentOutlineId.value)
     } catch {
       // handled
     } finally {
@@ -87,14 +109,13 @@ export function initCharactersState() {
   }
 
   async function submitCreate(): Promise<void> {
-    if (!createForm.name.trim()) return
+    if (!createForm.name.trim() || !currentOutlineId.value) return
     createLoading.value = true
     try {
-      const character = await createCharacter(projectId, {
+      const character = await createCharacter(projectId, currentOutlineId.value, {
         name: createForm.name,
         age: createForm.age ? parseInt(createForm.age) : undefined,
         role: createForm.role || undefined,
-        category: createForm.category || undefined,
         personalitySummary: createForm.personalitySummary || undefined,
         motivation: createForm.motivation || undefined,
         speakingStyle: createForm.speakingStyle || undefined,
@@ -115,10 +136,10 @@ export function initCharactersState() {
   }
 
   async function confirmDelete(): Promise<void> {
-    if (!deleteTarget.value) return
+    if (!deleteTarget.value || !currentOutlineId.value) return
     deleteLoading.value = true
     try {
-      await deleteCharacter(projectId, deleteTarget.value.id)
+      await deleteCharacter(projectId, currentOutlineId.value, deleteTarget.value.id)
       characters.value = characters.value.filter((c) => c.id !== deleteTarget.value!.id)
       deleteTarget.value = null
       toast.success('角色已删除')
@@ -141,7 +162,6 @@ export function initCharactersState() {
       name: c.name,
       age: c.age != null ? String(c.age) : '',
       role: c.role ?? '',
-      category: c.category ?? '',
       personalitySummary: c.personalitySummary ?? '',
       motivation: c.motivation ?? '',
       speakingStyle: c.speakingStyle ?? '',
@@ -155,14 +175,13 @@ export function initCharactersState() {
   }
 
   async function submitEdit(): Promise<void> {
-    if (!editTarget.value || !editForm.name.trim()) return
+    if (!editTarget.value || !editForm.name.trim() || !currentOutlineId.value) return
     editLoading.value = true
     try {
-      const updated = await updateCharacter(projectId, editTarget.value.id, {
+      const updated = await updateCharacter(projectId, currentOutlineId.value, editTarget.value.id, {
         name: editForm.name,
         age: editForm.age ? parseInt(editForm.age) : undefined,
         role: editForm.role || undefined,
-        category: editForm.category || undefined,
         personalitySummary: editForm.personalitySummary || undefined,
         motivation: editForm.motivation || undefined,
         speakingStyle: editForm.speakingStyle || undefined,
@@ -183,9 +202,62 @@ export function initCharactersState() {
     }
   }
 
-  onMounted(loadCharacters)
+  onMounted(async () => {
+    await loadOutlines()
+    await loadCharacters()
+    await loadPool()
+  })
+
+  // ── 原著角色池 ────────────────────────────────────────
+  const poolCharacters = ref<CharacterResponse[]>([])
+  const poolLoading = ref(false)
+  const showPoolPanel = ref(false)
+  const selectedPoolIds = ref<Set<string>>(new Set())
+  const importLoading = ref(false)
+
+  async function loadPool(): Promise<void> {
+    poolLoading.value = true
+    try {
+      poolCharacters.value = await getCharacterPool(projectId)
+    } catch {
+      // handled
+    } finally {
+      poolLoading.value = false
+    }
+  }
+
+  function togglePoolSelect(id: string): void {
+    if (selectedPoolIds.value.has(id)) {
+      selectedPoolIds.value.delete(id)
+    } else {
+      selectedPoolIds.value.add(id)
+    }
+  }
+
+  async function importSelectedToOutline(): Promise<void> {
+    if (!currentOutlineId.value || selectedPoolIds.value.size === 0) return
+    importLoading.value = true
+    try {
+      const ids = Array.from(selectedPoolIds.value)
+      const imported = await importFromPool(projectId, currentOutlineId.value, ids)
+      characters.value.push(...imported)
+      selectedPoolIds.value.clear()
+      showPoolPanel.value = false
+      toast.success(`已引入 ${imported.length} 个原著角色到当前大纲`)
+    } catch {
+      // handled
+    } finally {
+      importLoading.value = false
+    }
+  }
 
   return {
+    // 大纲选择
+    outlines,
+    currentOutlineId,
+    currentOutline,
+    switchOutline,
+    // 角色列表
     characters,
     loading,
     drawerOpen,
@@ -207,5 +279,14 @@ export function initCharactersState() {
     generateFromNovel,
     generateLoading,
     generateFromDesc,
+    // 原著角色池
+    poolCharacters,
+    poolLoading,
+    showPoolPanel,
+    selectedPoolIds,
+    importLoading,
+    loadPool,
+    togglePoolSelect,
+    importSelectedToOutline,
   }
 }

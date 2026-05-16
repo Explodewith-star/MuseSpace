@@ -163,8 +163,14 @@ public class MuseSpaceDbContext : DbContext
             entity.Property(e => e.PrivateSecrets).HasColumnType("text");
             entity.Property(e => e.CurrentState).HasColumnType("text");
             entity.Property(e => e.SourceNovelId).IsRequired(false);
+            // StoryOutlineId 可为 null：null 表示「原著角色池」（项目级只读参考）
+            entity.Property(e => e.StoryOutlineId).IsRequired(false);
             entity.HasIndex(e => e.StoryProjectId);
+            entity.HasIndex(e => e.StoryOutlineId);
             entity.HasOne<StoryProject>().WithMany().HasForeignKey(e => e.StoryProjectId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<StoryOutline>().WithMany().HasForeignKey(e => e.StoryOutlineId)
+                  .IsRequired(false)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 

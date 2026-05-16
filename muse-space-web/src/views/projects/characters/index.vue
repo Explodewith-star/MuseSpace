@@ -16,6 +16,10 @@ const route = useRoute()
 const projectId = route.params.id as string
 
 const {
+  outlines,
+  currentOutlineId,
+  currentOutline,
+  switchOutline,
   characters,
   loading,
   drawerOpen,
@@ -37,6 +41,13 @@ const {
   generateFromNovel,
   generateLoading,
   generateFromDesc,
+  poolCharacters,
+  poolLoading,
+  showPoolPanel,
+  selectedPoolIds,
+  importLoading,
+  togglePoolSelect,
+  importSelectedToOutline,
 } = initCharactersState()
 
 // ── 搜索 & 视图切换 ──
@@ -102,6 +113,67 @@ function toggleExpand(id: string) {
           <i class="i-lucide-plus" />
           添加角色
         </AppButton>
+      </div>
+    </div>
+
+    <!-- 大纲选择器 -->
+    <div v-if="outlines.length > 0" class="outline-tabs">
+      <button
+        v-for="outline in outlines"
+        :key="outline.id"
+        :class="['outline-tab', { active: currentOutlineId === outline.id }]"
+        @click="switchOutline(outline.id)"
+      >
+        {{ outline.name }}
+      </button>
+      <!-- 原著角色池入口（有池数据时显示） -->
+      <button
+        v-if="poolCharacters.length > 0"
+        :class="['outline-tab', 'pool-tab', { active: showPoolPanel }]"
+        @click="showPoolPanel = !showPoolPanel"
+      >
+        <i class="i-lucide-library" />
+        原著角色池
+        <span class="pool-count">{{ poolCharacters.length }}</span>
+      </button>
+    </div>
+
+    <!-- 原著角色池面板 -->
+    <div v-if="showPoolPanel" class="pool-panel">
+      <div class="pool-panel-header">
+        <h3 class="pool-panel-title">
+          <i class="i-lucide-library" />
+          原著角色池
+        </h3>
+        <p class="pool-panel-desc">以下角色来自原著导入，选择后可引入到当前大纲（独立副本，互不影响）。</p>
+        <AppButton
+          v-if="selectedPoolIds.size > 0"
+          :loading="importLoading"
+          @click="importSelectedToOutline"
+        >
+          <i class="i-lucide-download" />
+          引入选中 ({{ selectedPoolIds.size }})
+        </AppButton>
+      </div>
+      <div v-if="poolLoading" class="pool-loading">
+        <AppSkeleton v-for="i in 3" :key="i" height="80px" class="mb-2" />
+      </div>
+      <div v-else class="pool-cards">
+        <div
+          v-for="c in poolCharacters"
+          :key="c.id"
+          :class="['pool-card', { selected: selectedPoolIds.has(c.id) }]"
+          @click="togglePoolSelect(c.id)"
+        >
+          <div class="pool-card-check">
+            <i :class="selectedPoolIds.has(c.id) ? 'i-lucide-check-circle-2' : 'i-lucide-circle'" />
+          </div>
+          <div class="pool-card-body">
+            <div class="pool-card-name">{{ c.name }}</div>
+            <div v-if="c.role" class="pool-card-role">{{ c.role }}</div>
+            <div v-if="c.personalitySummary" class="pool-card-summary">{{ c.personalitySummary }}</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -205,7 +277,6 @@ function toggleExpand(id: string) {
                   <p v-if="char.role" class="char-role">{{ char.role }}</p>
                 </div>
                 <div class="char-card__actions">
-                  <AppBadge v-if="char.category" variant="primary" size="sm">{{ char.category }}</AppBadge>
                   <AppBadge v-if="char.age" variant="muted">{{ char.age }} 岁</AppBadge>
                   <button class="card-action-btn" title="编辑角色" @click="openEdit(char)">
                     <i class="i-lucide-pencil" />
@@ -288,7 +359,6 @@ function toggleExpand(id: string) {
                   <p v-if="char.role" class="char-role">{{ char.role }}</p>
                 </div>
                 <div class="char-card__actions">
-                  <AppBadge v-if="char.category" variant="primary" size="sm">{{ char.category }}</AppBadge>
                   <AppBadge v-if="char.age" variant="muted">{{ char.age }} 岁</AppBadge>
                   <button class="card-action-btn" title="编辑角色" @click="openEdit(char)">
                     <i class="i-lucide-pencil" />
@@ -407,18 +477,18 @@ function toggleExpand(id: string) {
           <AppInput v-model="createForm.age" label="年龄" placeholder="如：28" />
           <AppInput v-model="createForm.role" label="身份定位" placeholder="如：主角、反派、导师" />
         </div>
-        <!-- 角色分类 -->
+        <!-- 身份定位快捷选择 -->
         <div class="form-field">
-          <label class="form-label">角色分类</label>
+          <label class="form-label">身份定位</label>
           <div class="category-options">
             <button
-              v-for="cat in ['', '主角', '配角', '反派', '龙套', '其他']"
-              :key="cat"
+              v-for="r in ['', '主角', '配角', '反派', '龙套', '其他']"
+              :key="r"
               type="button"
-              :class="['category-btn', { active: createForm.category === cat }]"
-              @click="createForm.category = cat"
+              :class="['category-btn', { active: createForm.role === r }]"
+              @click="createForm.role = r"
             >
-              {{ cat || '不选' }}
+              {{ r || '不选' }}
             </button>
           </div>
         </div>
@@ -494,18 +564,18 @@ function toggleExpand(id: string) {
           <AppInput v-model="editForm.age" label="年龄" />
           <AppInput v-model="editForm.role" label="身份定位" />
         </div>
-        <!-- 角色分类 -->
+        <!-- 身份定位快捷选择 -->
         <div class="form-field">
-          <label class="form-label">角色分类</label>
+          <label class="form-label">身份定位</label>
           <div class="category-options">
             <button
-              v-for="cat in ['', '主角', '配角', '反派', '龙套', '其他']"
-              :key="cat"
+              v-for="r in ['', '主角', '配角', '反派', '龙套', '其他']"
+              :key="r"
               type="button"
-              :class="['category-btn', { active: editForm.category === cat }]"
-              @click="editForm.category = cat"
+              :class="['category-btn', { active: editForm.role === r }]"
+              @click="editForm.role = r"
             >
-              {{ cat || '不选' }}
+              {{ r || '不选' }}
             </button>
           </div>
         </div>
@@ -950,6 +1020,165 @@ function toggleExpand(id: string) {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Outline tabs */
+.outline-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 4px;
+  background: var(--color-bg-muted, #f5f5f5);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.outline-tab {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.outline-tab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-surface);
+}
+
+.outline-tab.active {
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+/* 原著角色池入口按钮 */
+.pool-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  border-color: var(--color-accent, #f59e0b);
+  color: var(--color-accent, #f59e0b);
+}
+
+.pool-tab.active {
+  background: color-mix(in srgb, var(--color-accent, #f59e0b) 12%, transparent);
+  border-color: var(--color-accent, #f59e0b);
+  color: var(--color-accent, #f59e0b);
+}
+
+.pool-count {
+  background: var(--color-accent, #f59e0b);
+  color: #fff;
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+/* 原著角色池面板 */
+.pool-panel {
+  background: var(--color-bg-surface, #fff);
+  border: 1px solid var(--color-border, #eee);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.pool-panel-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.pool-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.pool-panel-desc {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text-muted, #888);
+  margin: 2px 0 0;
+  min-width: 200px;
+}
+
+.pool-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.pool-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border, #eee);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.pool-card:hover {
+  border-color: var(--color-accent, #f59e0b);
+  background: color-mix(in srgb, var(--color-accent, #f59e0b) 5%, transparent);
+}
+
+.pool-card.selected {
+  border-color: var(--color-accent, #f59e0b);
+  background: color-mix(in srgb, var(--color-accent, #f59e0b) 10%, transparent);
+}
+
+.pool-card-check {
+  font-size: 18px;
+  color: var(--color-text-muted, #bbb);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.pool-card.selected .pool-card-check {
+  color: var(--color-accent, #f59e0b);
+}
+
+.pool-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.pool-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.pool-card-role {
+  font-size: 12px;
+  color: var(--color-text-muted, #888);
+  margin-top: 2px;
+}
+
+.pool-card-summary {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .form-label {

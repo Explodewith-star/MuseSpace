@@ -13,8 +13,11 @@ using System.Text.Json;
 
 namespace MuseSpace.Api.Controllers;
 
+/// <summary>
+/// 按大纲管理角色（角色归属大纲隔离，互不污染）。
+/// </summary>
 [ApiController]
-[Route("api/projects/{projectId:guid}/characters")]
+[Route("api/projects/{projectId:guid}/outlines/{outlineId:guid}/characters")]
 public class CharactersController : ControllerBase
 {
     private readonly CharacterAppService _service;
@@ -35,31 +38,30 @@ public class CharactersController : ControllerBase
     }
 
     /// <summary>
-    /// 创建角色卡
+    /// 创建角色卡（归属当前大纲）
     /// </summary>
-    /// <param name="projectId"></param>
-    /// <param name="request"></param>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
     [HttpPost]
     public async Task<ActionResult<ApiResponse<CharacterResponse>>> Create(
-        Guid projectId, [FromBody] CreateCharacterRequest request, CancellationToken cancellationToken)
+        Guid projectId, Guid outlineId, [FromBody] CreateCharacterRequest request, CancellationToken cancellationToken)
     {
-        var result = await _service.CreateAsync(projectId, request, cancellationToken);
+        var result = await _service.CreateAsync(projectId, outlineId, request, cancellationToken);
         return Ok(ApiResponse<CharacterResponse>.Ok(result));
     }
 
+    /// <summary>
+    /// 获取当前大纲下的角色列表
+    /// </summary>
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<List<CharacterResponse>>>> GetAll(
-        Guid projectId, CancellationToken cancellationToken)
+    public async Task<ActionResult<ApiResponse<List<CharacterResponse>>>> GetByOutline(
+        Guid projectId, Guid outlineId, CancellationToken cancellationToken)
     {
-        var result = await _service.GetByProjectAsync(projectId, cancellationToken);
+        var result = await _service.GetByOutlineAsync(outlineId, cancellationToken);
         return Ok(ApiResponse<List<CharacterResponse>>.Ok(result));
     }
 
     [HttpGet("{characterId:guid}")]
     public async Task<ActionResult<ApiResponse<CharacterResponse>>> GetById(
-        Guid projectId, Guid characterId, CancellationToken cancellationToken)
+        Guid projectId, Guid outlineId, Guid characterId, CancellationToken cancellationToken)
     {
         var result = await _service.GetByIdAsync(projectId, characterId, cancellationToken);
         if (result is null) return NotFound(ApiResponse<CharacterResponse>.Fail("Character not found"));
@@ -68,7 +70,7 @@ public class CharactersController : ControllerBase
 
     [HttpDelete("{characterId:guid}")]
     public async Task<ActionResult<ApiResponse<bool>>> Delete(
-        Guid projectId, Guid characterId, CancellationToken cancellationToken)
+        Guid projectId, Guid outlineId, Guid characterId, CancellationToken cancellationToken)
     {
         var deleted = await _service.DeleteAsync(projectId, characterId, cancellationToken);
         if (!deleted) return NotFound(ApiResponse<bool>.Fail("Character not found"));
@@ -77,7 +79,7 @@ public class CharactersController : ControllerBase
 
     [HttpPut("{characterId:guid}")]
     public async Task<ActionResult<ApiResponse<CharacterResponse>>> Update(
-        Guid projectId, Guid characterId, [FromBody] UpdateCharacterRequest request, CancellationToken cancellationToken)
+        Guid projectId, Guid outlineId, Guid characterId, [FromBody] UpdateCharacterRequest request, CancellationToken cancellationToken)
     {
         var result = await _service.UpdateAsync(projectId, characterId, request, cancellationToken);
         if (result is null) return NotFound(ApiResponse<CharacterResponse>.Fail("Character not found"));
@@ -85,6 +87,18 @@ public class CharactersController : ControllerBase
     }
 
     /// <summary>
+    /// 从其他大纲复制角色到目标大纲（隔离复制，各自独立演化）
+    /// </summary>
+    [HttpPost("copy")]
+    public async Task<ActionResult<ApiResponse<List<CharacterResponse>>>> CopyToOutline(
+        Guid projectId, Guid outlineId, [FromBody] CopyCharactersRequest request, CancellationToken cancellationToken)
+    {
+        // 确保目标大纲与路由一致
+        var req = new CopyCharactersRequest { CharacterIds = request.CharacterIds, TargetOutlineId = outlineId };
+        var result = await _service.CopyToOutlineAsync(projectId, req, cancellationToken);
+        return Ok(ApiResponse<List<CharacterResponse>>.Ok(result));
+    }
+
     /// <summary>
     /// AI 生成角色信息（支持从原著提取或自由生成）。
     /// - FromNovel=true：向量检索原著 + 提取 Agent
@@ -93,7 +107,7 @@ public class CharactersController : ControllerBase
     /// </summary>
     [HttpPost("generate")]
     public async Task<ActionResult<ApiResponse<ExtractCharacterResponse>>> GenerateCharacter(
-        Guid projectId, [FromBody] GenerateCharacterRequest request, CancellationToken cancellationToken)
+        Guid projectId, Guid outlineId, [FromBody] GenerateCharacterRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Description))
             return BadRequest(ApiResponse<ExtractCharacterResponse>.Fail("请描述角色的基本信息"));
@@ -153,7 +167,6 @@ public class CharactersController : ControllerBase
                 Name = parsed.Name,
                 Age = parsed.Age,
                 Role = parsed.Role,
-                Category = parsed.Category,
                 PersonalitySummary = parsed.PersonalitySummary,
                 Motivation = parsed.Motivation,
                 SpeakingStyle = parsed.SpeakingStyle,

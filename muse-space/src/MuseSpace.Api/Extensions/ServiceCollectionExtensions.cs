@@ -136,6 +136,8 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<LegacyConsistencyCategoryMigrationHostedService>();
         // ── 启动 idempotent 建表（plot_threads） ───────────────────────────────
         services.AddHostedService<PlotThreadSchemaInitializerHostedService>();
+        // ── 启动一次性迁移：characters 表新增 StoryOutlineId（角色按大纲隔离） ──
+        services.AddHostedService<CharacterOutlineScopeMigrationHostedService>();
 
         // 生成日志（不再写入 JSON 文件，仅 Serilog 结构化日志）
         services.AddSingleton<IGenerationLogService, GenerationLogService>();
