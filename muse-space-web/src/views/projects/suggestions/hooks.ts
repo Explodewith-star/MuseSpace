@@ -30,7 +30,7 @@ export function initSuggestionsState() {
   const suggestions = ref<AgentSuggestionResponse[]>([])
   const loading = ref(false)
   const filterCategory = ref<string>('')
-  const filterStatus = ref<SuggestionStatus | ''>('')
+  const filterStatus = ref<SuggestionStatus | 'AcceptedApplied' | ''>('')
 
   // 选中的建议 ID
   const selectedIds = ref<Set<string>>(new Set())
@@ -50,6 +50,7 @@ export function initSuggestionsState() {
   const filteredSuggestions = computed(() => {
     return suggestions.value.filter((s) => {
       if (filterCategory.value && s.category !== filterCategory.value) return false
+      if (filterStatus.value === 'AcceptedApplied') return s.status === 'Accepted' || s.status === 'Applied'
       if (filterStatus.value && s.status !== filterStatus.value) return false
       return true
     })
@@ -74,7 +75,7 @@ export function initSuggestionsState() {
   const hasAppliedSelected = computed(() =>
     [...selectedIds.value].some((id) => {
       const s = suggestions.value.find((x) => x.id === id)
-      return s?.status === 'Applied'
+      return s?.status === 'Applied' || s?.status === 'Accepted'
     }),
   )
 

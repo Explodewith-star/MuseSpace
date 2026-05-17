@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppBadge from '@/components/base/AppBadge.vue'
@@ -27,6 +27,9 @@ const toast = useToast()
 
 const facts = ref<CanonFactResponse[]>([])
 const loading = ref(false)
+const selectedIds = ref(new Set<string>())
+const batchDeleting = ref(false)
+const guideVisible = ref(true)
 
 const FACT_TYPE_OPTIONS = [
   { value: '', label: '全部类型' },
@@ -44,7 +47,7 @@ const pageSizeOptions = [
 ]
 
 const filterType = ref('')
-const onlyActive = ref(true)
+const onlyActive = ref(false)
 const onlyLocked = ref(false)
 const searchQuery = ref('')
 const currentPage = ref(1)
@@ -151,8 +154,23 @@ function factValueLabel(value: string): string {
     Awareness_Shared: '共同察觉异常',
     Happened: '已发生',
     Manifested: '已显现',
+    Married: '已婚',
+    Divorced: '离婚',
+    Engaged: '订婚',
+    Dating: '恋爱中',
+    Blackmailing: '威胁勒索',
+    Betrayed: '背叛',
+    Ally: '同盟',
+    Enemy: '对立',
+    True: '是',
+    False: '否',
+    Active: '生效中',
+    Known: '已知',
+    Unknown: '未知',
   }
-  return labels[value] ?? value
+  if (labels[value]) return labels[value]
+  // 未映射的英文：拆分 PascalCase 为空格分隔
+  return value.replace(/([a-z])([A-Z])/g, '$1 $2')
 }
 
 function confidenceLabel(confidence: number): string {
@@ -228,9 +246,11 @@ async function save() {
 }
 
 async function toggleLock(f: CanonFactResponse) {
-  await patchCanonFact(projectId.value, f.id, { isLocked: !f.isLocked })
-  toast.success(f.isLocked ? '已解锁' : '已锁定')
-  await refresh()
+  const newLocked = !f.isLocked
+  await patchCanonFact(projectId.value, f.id, { isLocked: newLocked })
+  toast.success(newLocked ? '已锁定' : '已解锁')
+  const idx = facts.value.findIndex((item) => item.id === f.id)
+  if (idx !== -1) facts.value[idx] = { ...facts.value[idx], isLocked: newLocked }
 }
 
 async function removeOne(f: CanonFactResponse) {
@@ -239,6 +259,40 @@ async function removeOne(f: CanonFactResponse) {
   if (selectedFact.value?.id === f.id) detailOpen.value = false
   await refresh()
 }
+
+const allPageSelected = computed(
+  () =>
+    pagedFacts.value.length > 0 && pagedFacts.value.every((f) => selectedIds.value.has(f.id)),
+)
+
+function toggleSelect(id: string) {
+  if (selectedIds.value.has(id)) {
+    selectedIds.value.delete(id)
+  } else {
+    selectedIds.value.add(id)
+  }
+}
+
+function toggleSelectAllPage() {
+  if (allPageSelected.value) {
+    pagedFacts.value.forEach((f) => selectedIds.value.delete(f.id))
+  } else {
+    pagedFacts.value.forEach((f) => selectedIds.value.add(f.id))
+  }
+}
+
+async function batchDeleteSelected() {
+  if (!confirm(`确定删除选中的 ${selectedIds.value.size} 条事实？`)) return
+  batchDeleting.value = true
+  try {
+    await Promise.all([...selectedIds.value].map((id) => deleteCanonFact(projectId.value, id)))
+    selectedIds.value.clear()
+    toast.success('批量删除成功')
+    await refresh()
+  } finally {
+    batchDeleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -246,12 +300,48 @@ async function removeOne(f: CanonFactResponse) {
     <div class="page__header">
       <div>
         <h2 class="page__title">剧情记忆</h2>
-        <p class="page__subtitle">Canon 事实账本：记录会影响后续创作的一次性事件、人物状态与世界变化。</p>
+        <p class="page__subtitle">记录 AI 从章节中提取的关键事实，约束后续创作、防止剧情矛盾。</p>
       </div>
       <AppButton @click="openCreate">
         <i class="i-lucide-plus" />
         新增事实
       </AppButton>
+    </div>
+
+    <div v-if="guideVisible" class="guide-panel">
+      <div class="guide-panel__grid">
+        <div class="guide-item">
+          <i class="i-lucide-brain guide-item__icon guide-icon--primary" />
+          <div>
+            <p class="guide-item__title">什么是剧情记忆？</p>
+            <p class="guide-item__body">AI 从每个章节自动抄取的关键事实：人物关系、生死状态、不可重复事件等。这些记忆会约束后续 AI 创作，防止前后矛盾。</p>
+          </div>
+        </div>
+        <div class="guide-item">
+          <i class="i-lucide-lock guide-item__icon guide-icon--lock" />
+          <div>
+            <p class="guide-item__title">锁定 = 剧情铁律</p>
+            <p class="guide-item__body">AI 不会自动推翻或修改此事实，适合已确认无误、对剧情起决定性作用的关键事件。</p>
+          </div>
+        </div>
+        <div class="guide-item">
+          <i class="i-lucide-pencil guide-item__icon guide-icon--edit" />
+          <div>
+            <p class="guide-item__title">待确认 = 允许更新</p>
+            <p class="guide-item__body">AI 可随新章节自动更新此事实，适合尚不确定的关系或状态。</p>
+          </div>
+        </div>
+        <div class="guide-item">
+          <i class="i-lucide-x-circle guide-item__icon guide-icon--invalid" />
+          <div>
+            <p class="guide-item__title">已失效 = 被推翻</p>
+            <p class="guide-item__body">后续章节内容与该事实矛盾时自动标记为失效，不再约束 AI，但保留历史记录。</p>
+          </div>
+        </div>
+      </div>
+      <button class="guide-close" title="关闭引导" @click="guideVisible = false">
+        <i class="i-lucide-x" />
+      </button>
     </div>
 
     <section class="memory-summary" aria-label="剧情记忆统计">
@@ -321,13 +411,30 @@ async function removeOne(f: CanonFactResponse) {
       </AppFilterChip>
     </section>
 
+    <div v-if="selectedIds.size > 0" class="batch-bar">
+      <span class="batch-info">已选 {{ selectedIds.size }} 条</span>
+      <template v-if="batchDeleting">
+        <span class="batch-processing">
+          <i class="i-lucide-loader-circle batch-spinner" />
+          删除中，请稍候…
+        </span>
+      </template>
+      <template v-else>
+        <AppButton size="sm" variant="ghost" :disabled="batchDeleting" @click="batchDeleteSelected">
+          <i class="i-lucide-trash-2" />
+          批量删除
+        </AppButton>
+        <AppButton size="sm" variant="ghost" @click="selectedIds.clear()">取消选择</AppButton>
+      </template>
+    </div>
+
     <section class="table-shell">
       <div class="table-shell__top">
         <div>
           <span class="table-title">事实列表</span>
           <span class="table-count">显示 {{ pageStart }}-{{ pageEnd }} / {{ filtered.length }} 条</span>
         </div>
-        <span class="table-hint">点击任意行查看完整出处与内部 Key</span>
+        <span class="table-hint">点击任意行查看详情与备注</span>
       </div>
 
       <div v-if="loading" class="loading">加载中...</div>
@@ -338,12 +445,13 @@ async function removeOne(f: CanonFactResponse) {
         <table class="fact-table">
           <thead>
             <tr>
+              <th class="col-check">
+                <AppCheckbox :checked="allPageSelected" @change="toggleSelectAllPage" />
+              </th>
               <th class="col-type">类型</th>
-              <th>对象</th>
-              <th>事实</th>
-              <th class="col-confidence">置信度</th>
+              <th>事实描述</th>
               <th class="col-status">状态</th>
-              <th>来源 / 说明</th>
+              <th class="col-confidence">可信度</th>
               <th class="col-actions">操作</th>
             </tr>
           </thead>
@@ -351,33 +459,53 @@ async function removeOne(f: CanonFactResponse) {
             <tr
               v-for="f in pagedFacts"
               :key="f.id"
-              :class="{ 'row-invalidated': !!f.invalidatedByChapterId }"
+              :class="{ 'row-invalidated': !!f.invalidatedByChapterId, 'row-selected': selectedIds.has(f.id) }"
               @click="openDetail(f)"
             >
+              <td class="col-check" @click.stop>
+                <AppCheckbox :checked="selectedIds.has(f.id)" @change="toggleSelect(f.id)" />
+              </td>
               <td class="col-type">
                 <AppBadge variant="primary">{{ factTypeLabel(f.factType) }}</AppBadge>
               </td>
-              <td class="cell-subject">{{ factSubject(f) }}</td>
-              <td class="cell-value">{{ factValueLabel(f.factValue) }}</td>
-              <td class="col-confidence">{{ confidenceLabel(f.confidence) }}</td>
+              <td class="cell-description">
+                <p class="cell-desc__primary">{{ f.notes || `${factSubject(f)} → ${factValueLabel(f.factValue)}` }}</p>
+                <p v-if="f.notes" class="cell-desc__meta">{{ factSubject(f) }} → {{ factValueLabel(f.factValue) }}</p>
+              </td>
               <td class="col-status">
-                <AppBadge v-if="f.invalidatedByChapterId" variant="muted">已失效</AppBadge>
-                <AppBadge v-else-if="f.isLocked" variant="danger">
-                  <i class="i-lucide-lock" /> 锁定
+                <AppBadge v-if="f.invalidatedByChapterId" variant="muted">
+                  <i class="i-lucide-x-circle" /> 已失效
                 </AppBadge>
-                <AppBadge v-else variant="accent">
-                  <i class="i-lucide-unlock" /> 未锁
+                <AppBadge v-else-if="f.isLocked" variant="success">
+                  <i class="i-lucide-lock-keyhole" /> 已确认
+                </AppBadge>
+                <AppBadge v-else variant="default">
+                  <i class="i-lucide-pencil-line" /> 待确认
                 </AppBadge>
               </td>
-              <td class="cell-notes" :title="f.notes ?? ''">{{ f.notes ?? '暂无来源说明' }}</td>
+              <td class="col-confidence">{{ confidenceLabel(f.confidence) }}</td>
               <td class="col-actions" @click.stop>
-                <AppButton variant="ghost" size="sm" @click="toggleLock(f)">
-                  {{ f.isLocked ? '解锁' : '锁定' }}
-                </AppButton>
-                <AppButton variant="ghost" size="sm" @click="openEdit(f)">编辑</AppButton>
-                <AppButton variant="ghost" size="sm" @click="removeOne(f)" aria-label="删除事实">
-                  <i class="i-lucide-trash-2" />
-                </AppButton>
+                <div class="col-actions__inner">
+                  <button
+                    class="row-action"
+                    :class="{ 'row-action--locked': f.isLocked }"
+                    :title="f.isLocked ? '已锁定（点击解锁，允许 AI 更新此事实）' : '未锁定（点击锁定，防止 AI 自动修改）'"
+                    @click="toggleLock(f)"
+                  >
+                    <i :class="f.isLocked ? 'i-lucide-lock-keyhole' : 'i-lucide-lock-open'" />
+                  </button>
+                  <button class="row-action" title="编辑事实" @click="openEdit(f)">
+                    <i class="i-lucide-pencil" />
+                  </button>
+                  <button
+                    class="row-action row-action--danger"
+                    aria-label="删除事实"
+                    title="删除事实"
+                    @click="removeOne(f)"
+                  >
+                    <i class="i-lucide-trash-2" />
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -401,21 +529,30 @@ async function removeOne(f: CanonFactResponse) {
       <div v-if="selectedFact" class="detail">
         <div class="detail__head">
           <AppBadge variant="primary">{{ factTypeLabel(selectedFact.factType) }}</AppBadge>
-          <AppBadge v-if="selectedFact.isLocked" variant="danger">锁定</AppBadge>
-          <AppBadge v-else variant="accent">未锁</AppBadge>
+          <AppBadge v-if="selectedFact.invalidatedByChapterId" variant="muted">
+            <i class="i-lucide-x-circle" /> 已失效
+          </AppBadge>
+          <AppBadge v-else-if="selectedFact.isLocked" variant="success">
+            <i class="i-lucide-lock-keyhole" /> 已确认（锁定）
+          </AppBadge>
+          <AppBadge v-else variant="default">
+            <i class="i-lucide-pencil-line" /> 待确认
+          </AppBadge>
         </div>
 
         <div class="detail-block">
-          <span class="detail-label">对象</span>
-          <p class="detail-value">{{ factSubject(selectedFact) }}</p>
+          <span class="detail-label">事实描述</span>
+          <p class="detail-copy">{{ selectedFact.notes || `${factSubject(selectedFact)} → ${factValueLabel(selectedFact.factValue)}` }}</p>
         </div>
-        <div class="detail-block">
-          <span class="detail-label">事实值</span>
-          <p class="detail-value">{{ factValueLabel(selectedFact.factValue) }}</p>
-        </div>
-        <div class="detail-block">
-          <span class="detail-label">出处 / 说明</span>
-          <p class="detail-copy">{{ selectedFact.notes ?? '暂无来源说明' }}</p>
+        <div class="detail-grid">
+          <div>
+            <span class="detail-label">涉及对象</span>
+            <p class="detail-value">{{ factSubject(selectedFact) }}</p>
+          </div>
+          <div>
+            <span class="detail-label">AI 标注取值</span>
+            <p class="detail-value">{{ factValueLabel(selectedFact.factValue) }}</p>
+          </div>
         </div>
         <div class="detail-grid">
           <div>
@@ -424,20 +561,25 @@ async function removeOne(f: CanonFactResponse) {
           </div>
           <div>
             <span class="detail-label">状态</span>
-            <p class="detail-value">{{ selectedFact.invalidatedByChapterId ? '已失效' : '当前生效' }}</p>
+            <p class="detail-value">{{ selectedFact.invalidatedByChapterId ? '已失效（被后续章节推翻）' : selectedFact.isLocked ? '已确认（AI 不会修改）' : '待确认（允许 AI 更新）' }}</p>
           </div>
         </div>
         <div class="detail-block detail-block--technical">
-          <span class="detail-label">内部 Key</span>
+          <span class="detail-label">事实标识 <span class="detail-label-sub">（系统内部，供 AI 识别）</span></span>
           <code>{{ selectedFact.factKey }}</code>
         </div>
         <div class="detail-block detail-block--technical">
-          <span class="detail-label">内部 Value</span>
+          <span class="detail-label">事实取值 <span class="detail-label-sub">（对应标识的状态值）</span></span>
           <code>{{ selectedFact.factValue }}</code>
         </div>
       </div>
       <template #footer>
-        <AppButton v-if="selectedFact" variant="ghost" @click="toggleLock(selectedFact)">
+        <AppButton
+          v-if="selectedFact"
+          variant="ghost"
+          :title="selectedFact.isLocked ? '解锁后 AI 可根据新章节更新此事实' : '锁定后 AI 不会自动修改此事实'"
+          @click="toggleLock(selectedFact)"
+        >
           {{ selectedFact.isLocked ? '解锁' : '锁定' }}
         </AppButton>
         <AppButton v-if="selectedFact" @click="openEdit(selectedFact)">编辑</AppButton>
@@ -510,6 +652,87 @@ async function removeOne(f: CanonFactResponse) {
   font-size: 13px;
   color: var(--color-text-muted);
   line-height: 1.6;
+}
+
+.guide-panel {
+  position: relative;
+  padding: 16px 40px 16px 16px;
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.guide-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.guide-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.guide-item__icon {
+  flex-shrink: 0;
+  font-size: 18px;
+  margin-top: 1px;
+}
+
+.guide-icon--primary {
+  color: var(--color-primary);
+}
+
+.guide-icon--lock {
+  color: var(--color-success);
+}
+
+.guide-icon--edit {
+  color: var(--color-text-muted);
+}
+
+.guide-icon--invalid {
+  color: var(--color-text-muted);
+}
+
+.guide-item__title {
+  margin: 0 0 3px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.guide-item__body {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.guide-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.12s;
+}
+
+.guide-close:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-text-primary);
 }
 
 .memory-summary {
@@ -647,14 +870,14 @@ async function removeOne(f: CanonFactResponse) {
 
 .fact-table {
   width: 100%;
-  min-width: 980px;
+  min-width: 760px;
   border-collapse: separate;
   border-spacing: 0;
 }
 
 .fact-table th,
 .fact-table td {
-  padding: 11px 12px;
+  padding: 12px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
   text-align: left;
   font-size: 13px;
@@ -688,30 +911,29 @@ async function removeOne(f: CanonFactResponse) {
 }
 
 .col-status {
-  width: 104px;
+  width: 110px;
 }
 
-.cell-subject {
-  max-width: 220px;
-  font-weight: 600;
+.cell-description {
+  max-width: 520px;
+}
+
+.cell-desc__primary {
+  margin: 0;
   color: var(--color-text-primary);
-  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.6;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
-.cell-value {
-  max-width: 180px;
-  color: var(--color-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cell-notes {
-  max-width: 360px;
+.cell-desc__meta {
+  margin: 3px 0 0;
   color: var(--color-text-muted);
-  line-height: 1.5;
+  font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -720,19 +942,103 @@ async function removeOne(f: CanonFactResponse) {
 .col-actions {
   position: sticky;
   right: 0;
-  display: flex;
-  gap: 4px;
-  justify-content: flex-end;
-  min-width: 172px;
+  min-width: 110px;
   background: inherit;
+  box-shadow: -6px 0 10px -4px color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
+.col-actions__inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
 }
 
 th.col-actions {
+  z-index: 2;
   background: color-mix(in srgb, var(--color-bg-elevated) 54%, var(--color-bg-surface));
+}
+
+.row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.row-action:hover {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+}
+
+.row-action--locked {
+  color: var(--color-primary);
+}
+
+.row-action--locked:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+}
+
+.row-action--danger:hover {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
 }
 
 .row-invalidated {
   opacity: 0.6;
+}
+
+.row-selected {
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+.col-check {
+  width: 32px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  border-radius: 8px;
+}
+
+.batch-info {
+  font-size: 13px;
+  color: var(--color-primary);
+  margin-right: 4px;
+}
+
+.batch-processing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.batch-spinner {
+  animation: spin 1s linear infinite;
 }
 
 .loading,
@@ -785,6 +1091,11 @@ th.col-actions {
 .detail-label {
   font-size: 12px;
   color: var(--color-text-muted);
+}
+
+.detail-label-sub {
+  font-size: 11px;
+  opacity: 0.75;
 }
 
 .detail-value {

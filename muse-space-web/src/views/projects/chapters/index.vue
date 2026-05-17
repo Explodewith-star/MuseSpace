@@ -192,6 +192,7 @@ const {
   loading,
   loadChapters,
   drawerOpen,
+  createTrigger,
   createForm,
   createLoading,
   openCreate,
@@ -241,7 +242,11 @@ const worldRuleCount = ref(0)
 
 async function loadContextStats() {
   try {
-    const [chars, rules] = await Promise.all([getCharacters(projectId), getWorldRules(projectId)])
+    const outlineId = selectedOutlineId.value
+    const [chars, rules] = await Promise.all([
+      outlineId ? getCharacters(projectId, outlineId) : Promise.resolve([]),
+      getWorldRules(projectId),
+    ])
     characterCount.value = chars.length
     worldRuleCount.value = rules.length
   } catch {
@@ -1068,7 +1073,7 @@ watch(latestEvent, async (e) => {
     </div>
 
     <!-- 添加章节抽屉 -->
-    <AppDrawer v-model="drawerOpen" title="添加章节">
+    <AppDrawer v-model="drawerOpen" title="添加章节" :clear-handler="openCreate" :open-trigger="createTrigger">
       <div class="form-fields">
         <AppInput
           v-model="createForm.number"

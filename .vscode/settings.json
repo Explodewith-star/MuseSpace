@@ -3,6 +3,8 @@
     "dotnet run": true,
     "npm run dev": true,
     "npm run build": true,
-    "dotnet build": true
+    "dotnet build": true,
+    "npx tsc": true,
+    "dotnet ef": true
   }
 }

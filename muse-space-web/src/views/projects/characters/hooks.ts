@@ -1,6 +1,6 @@
 import { ref, reactive, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { getCharacters, createCharacter, updateCharacter, deleteCharacter, generateCharacter, copyCharactersToOutline, getCharacterPool, importFromPool } from '@/api/characters'
+import { useRoute, useRouter } from 'vue-router'
+import { getCharacters, createCharacter, updateCharacter, deleteCharacter, generateCharacter, createInPool } from '@/api/characters'
 import { getStoryOutlines } from '@/api/outlines'
 import { useToast } from '@/composables/useToast'
 import type { CharacterResponse, StoryOutlineResponse } from '@/types/models'
@@ -22,6 +22,7 @@ const emptyForm = (): CreateCharacterForm => ({
 
 export function initCharactersState() {
   const route = useRoute()
+  const router = useRouter()
   const toast = useToast()
   const projectId = route.params.id as string
 
@@ -44,6 +45,10 @@ export function initCharactersState() {
 
   async function switchOutline(outlineId: string): Promise<void> {
     currentOutlineId.value = outlineId
+    if (!outlineId) {
+      characters.value = []
+      return
+    }
     await loadCharacters()
   }
 
@@ -53,6 +58,8 @@ export function initCharactersState() {
   const drawerOpen = ref(false)
   const createLoading = ref(false)
   const createForm = reactive<CreateCharacterForm>(emptyForm())
+  /** 新建时是否同步一份到角色池 */
+  const syncToPool = ref(false)
 
   // AI 生成角色（统一入口，支持从原著提取或自由生成）
   const generateDesc = ref('')
@@ -61,7 +68,11 @@ export function initCharactersState() {
 
   async function generateFromDesc(): Promise<void> {
     const desc = generateDesc.value.trim()
-    if (!desc || !currentOutlineId.value) return
+    if (!desc) return
+    if (!currentOutlineId.value) {
+      toast.error('请先选择一个大纲，才能生成角色')
+      return
+    }
     generateLoading.value = true
     try {
       const result = await generateCharacter(projectId, currentOutlineId.value, desc, generateFromNovel.value)
@@ -103,16 +114,26 @@ export function initCharactersState() {
     }
   }
 
+  const createTrigger = ref(0)
+
   function openCreate(): void {
-    Object.assign(createForm, emptyForm())
+    if (!currentOutlineId.value) {
+      toast.error('请先在「创作」页为当前分类新建一个大纲，才能在其下添加角色')
+      return
+    }
+    if (!drawerOpen.value) {
+      Object.assign(createForm, emptyForm())
+      syncToPool.value = false
+    }
     drawerOpen.value = true
+    createTrigger.value++
   }
 
   async function submitCreate(): Promise<void> {
     if (!createForm.name.trim() || !currentOutlineId.value) return
     createLoading.value = true
     try {
-      const character = await createCharacter(projectId, currentOutlineId.value, {
+      const charData = {
         name: createForm.name,
         age: createForm.age ? parseInt(createForm.age) : undefined,
         role: createForm.role || undefined,
@@ -124,10 +145,19 @@ export function initCharactersState() {
         privateSecrets: createForm.privateSecrets || undefined,
         currentState: createForm.currentState || undefined,
         tags: createForm.tags || undefined,
-      })
+      }
+      const character = await createCharacter(projectId, currentOutlineId.value, charData)
       characters.value.push(character)
+      modeCharCounts.value[currentOutline.value!.mode] = (modeCharCounts.value[currentOutline.value!.mode] ?? 0) + 1
+      // 如勾选"同步到角色池"，同步一份
+      if (syncToPool.value) {
+        await createInPool(projectId, charData)
+        modeCharCounts.value[currentOutline.value!.mode] = (modeCharCounts.value[currentOutline.value!.mode] ?? 0) + 1
+        toast.success('角色添加成功，已在角色池保留留档')
+      } else {
+        toast.success('角色添加成功')
+      }
       drawerOpen.value = false
-      toast.success('角色添加成功')
     } catch {
       // handled
     } finally {
@@ -141,6 +171,7 @@ export function initCharactersState() {
     try {
       await deleteCharacter(projectId, currentOutlineId.value, deleteTarget.value.id)
       characters.value = characters.value.filter((c) => c.id !== deleteTarget.value!.id)
+      modeCharCounts.value[currentOutline.value!.mode] = Math.max(0, (modeCharCounts.value[currentOutline.value!.mode] ?? 1) - 1)
       deleteTarget.value = null
       toast.success('角色已删除')
     } catch {
@@ -155,23 +186,32 @@ export function initCharactersState() {
   const editDrawerOpen = ref(false)
   const editForm = reactive<CreateCharacterForm>(emptyForm())
   const editLoading = ref(false)
+  const editTrigger = ref(0)
 
   function openEdit(c: CharacterResponse): void {
+    const isRestoring = editDrawerOpen.value && editTarget.value?.id === c.id
     editTarget.value = c
-    Object.assign(editForm, {
-      name: c.name,
-      age: c.age != null ? String(c.age) : '',
-      role: c.role ?? '',
-      personalitySummary: c.personalitySummary ?? '',
-      motivation: c.motivation ?? '',
-      speakingStyle: c.speakingStyle ?? '',
-      forbiddenBehaviors: c.forbiddenBehaviors ?? '',
-      publicSecrets: '',
-      privateSecrets: '',
-      currentState: c.currentState ?? '',
-      tags: c.tags ?? '',
-    })
+    if (!isRestoring) {
+      Object.assign(editForm, {
+        name: c.name,
+        age: c.age != null ? String(c.age) : '',
+        role: c.role ?? '',
+        personalitySummary: c.personalitySummary ?? '',
+        motivation: c.motivation ?? '',
+        speakingStyle: c.speakingStyle ?? '',
+        forbiddenBehaviors: c.forbiddenBehaviors ?? '',
+        publicSecrets: '',
+        privateSecrets: '',
+        currentState: c.currentState ?? '',
+        tags: c.tags ?? '',
+      })
+    }
     editDrawerOpen.value = true
+    editTrigger.value++
+  }
+
+  function resetEditForm(): void {
+    if (editTarget.value) openEdit(editTarget.value)
   }
 
   async function submitEdit(): Promise<void> {
@@ -202,54 +242,43 @@ export function initCharactersState() {
     }
   }
 
-  onMounted(async () => {
-    await loadOutlines()
-    await loadCharacters()
-    await loadPool()
+  // ── 各 mode 角色总数（用于 tab badge） ─────────────────────
+  const ALL_GEN_MODES = [
+    'Original',
+    'ContinueFromOriginal',
+    'SideStoryFromOriginal',
+    'ExpandOrRewrite',
+  ] as const
+
+  const modeCharCounts = ref<Record<string, number>>({
+    Original: 0,
+    ContinueFromOriginal: 0,
+    SideStoryFromOriginal: 0,
+    ExpandOrRewrite: 0,
   })
 
-  // ── 原著角色池 ────────────────────────────────────────
-  const poolCharacters = ref<CharacterResponse[]>([])
-  const poolLoading = ref(false)
-  const showPoolPanel = ref(false)
-  const selectedPoolIds = ref<Set<string>>(new Set())
-  const importLoading = ref(false)
-
-  async function loadPool(): Promise<void> {
-    poolLoading.value = true
-    try {
-      poolCharacters.value = await getCharacterPool(projectId)
-    } catch {
-      // handled
-    } finally {
-      poolLoading.value = false
+  async function loadModeCharCounts(): Promise<void> {
+    if (outlines.value.length === 0) return
+    const pairs = await Promise.all(
+      outlines.value.map(async (o) => {
+        const chars = await getCharacters(projectId, o.id).catch(() => [])
+        return { mode: o.mode, count: chars.length }
+      }),
+    )
+    const counts: Record<string, number> = {
+      Original: 0,
+      ContinueFromOriginal: 0,
+      SideStoryFromOriginal: 0,
+      ExpandOrRewrite: 0,
     }
+    for (const { mode, count } of pairs) counts[mode] = (counts[mode] ?? 0) + count
+    modeCharCounts.value = counts
   }
 
-  function togglePoolSelect(id: string): void {
-    if (selectedPoolIds.value.has(id)) {
-      selectedPoolIds.value.delete(id)
-    } else {
-      selectedPoolIds.value.add(id)
-    }
-  }
-
-  async function importSelectedToOutline(): Promise<void> {
-    if (!currentOutlineId.value || selectedPoolIds.value.size === 0) return
-    importLoading.value = true
-    try {
-      const ids = Array.from(selectedPoolIds.value)
-      const imported = await importFromPool(projectId, currentOutlineId.value, ids)
-      characters.value.push(...imported)
-      selectedPoolIds.value.clear()
-      showPoolPanel.value = false
-      toast.success(`已引入 ${imported.length} 个原著角色到当前大纲`)
-    } catch {
-      // handled
-    } finally {
-      importLoading.value = false
-    }
-  }
+  onMounted(async () => {
+    await loadOutlines()
+    await Promise.all([loadCharacters(), loadModeCharCounts()])
+  })
 
   return {
     // 大纲选择
@@ -261,32 +290,29 @@ export function initCharactersState() {
     characters,
     loading,
     drawerOpen,
+    createTrigger,
     createForm,
     createLoading,
     openCreate,
     submitCreate,
+    syncToPool,
     deleteTarget,
     deleteLoading,
     openDelete: (c: CharacterResponse) => { deleteTarget.value = c },
     cancelDelete: () => { deleteTarget.value = null },
     confirmDelete,
     editDrawerOpen,
+    editTrigger,
     editForm,
     editLoading,
     openEdit,
+    resetEditForm,
     submitEdit,
     generateDesc,
     generateFromNovel,
     generateLoading,
     generateFromDesc,
-    // 原著角色池
-    poolCharacters,
-    poolLoading,
-    showPoolPanel,
-    selectedPoolIds,
-    importLoading,
-    loadPool,
-    togglePoolSelect,
-    importSelectedToOutline,
+    goToPool: () => router.push('/character-pool'),
+    modeCharCounts,
   }
 }

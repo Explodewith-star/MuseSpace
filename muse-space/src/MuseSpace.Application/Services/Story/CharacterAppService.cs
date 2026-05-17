@@ -82,7 +82,27 @@ public sealed class CharacterAppService
 
     /// <summary>
     /// 将原著角色池中的角色引入到指定大纲（隔离复制，各自独立演化）。
-    /// 不修改原著池中的原始记录。
+    /// <summary>获取多个项目的全局角色池（跨项目聚合视图）。</summary>
+    public async Task<List<CharacterResponse>> GetGlobalPoolAsync(IEnumerable<Guid> projectIds, CancellationToken cancellationToken = default)
+    {
+        var characters = await _repository.GetGlobalPoolAsync(projectIds, cancellationToken);
+        return characters.Adapt<List<CharacterResponse>>();
+    }
+
+    /// <summary>在角色池中直接新建角色（storyOutlineId = null）。</summary>
+    public async Task<CharacterResponse> CreateInPoolAsync(Guid projectId, CreateCharacterRequest request, CancellationToken cancellationToken = default)
+    {
+        var character = request.Adapt<Character>();
+        character.Id = Guid.NewGuid();
+        character.StoryProjectId = projectId;
+        character.StoryOutlineId = null;
+        await _repository.SaveAsync(projectId, character, cancellationToken);
+        return character.Adapt<CharacterResponse>();
+    }
+
+    /// <summary>
+    /// 将角色池中的角色引入到指定大纲（隔离复制，原著池保持不变）。
+    /// 引入后该角色成为大纲独立副本，可自由改写人设，并记录 SourcePoolCharacterId。
     /// </summary>
     public async Task<List<CharacterResponse>> ImportFromPoolAsync(
         Guid projectId, Guid outlineId, List<Guid> characterIds, CancellationToken cancellationToken = default)
@@ -91,12 +111,13 @@ public sealed class CharacterAppService
         foreach (var charId in characterIds)
         {
             var source = await _repository.GetByIdAsync(projectId, charId, cancellationToken);
-            // 只允许从原著池（null）引入
+            // 只允许从池（null）引入
             if (source is null || source.StoryOutlineId is not null) continue;
 
             var copy = source.Adapt<Character>();
             copy.Id = Guid.NewGuid();
             copy.StoryOutlineId = outlineId;
+            copy.SourcePoolCharacterId = source.Id;
             copies.Add(copy);
         }
 
@@ -105,6 +126,10 @@ public sealed class CharacterAppService
 
         return copies.Adapt<List<CharacterResponse>>();
     }
+
+    /// <summary>批量删除角色池中的角色。</summary>
+    public async Task DeleteManyFromPoolAsync(Guid projectId, List<Guid> characterIds, CancellationToken cancellationToken = default)
+        => await _repository.DeleteManyAsync(projectId, characterIds, cancellationToken);
 
     /// <summary>将角色从一个大纲复制到另一个大纲（横向共亭）。</summary>
     public async Task<List<CharacterResponse>> CopyToOutlineAsync(Guid projectId, CopyCharactersRequest request, CancellationToken cancellationToken = default)

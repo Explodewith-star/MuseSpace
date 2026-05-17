@@ -7,6 +7,8 @@ export interface StoryProjectResponse {
   description?: string
   genre?: string
   narrativePerspective?: string
+  /** 项目大类：原创主线 / 原著续写 / 直线番外 / 扩写改写 */
+  outlineType?: string
   createdAt: string
 }
 
@@ -15,6 +17,8 @@ export interface CreateStoryProjectRequest {
   description?: string
   genre?: string
   narrativePerspective?: string
+  /** 项目大类：原创主线 / 原著续写 / 直线番外 / 扩写改写 */
+  outlineType?: string
 }
 
 // ---------- Chapter ----------
@@ -68,10 +72,12 @@ export interface UpdateChapterRequest {
 export interface CharacterResponse {
   id: string
   storyProjectId: string
-  /** null = 原著角色池，有值 = 已归属到某大纲 */
+  /** null = 角色池，有值 = 已归属到某大纲 */
   storyOutlineId: string | null
   /** null = 原创角色，有值 = 从该原著提取 */
   sourceNovelId?: string | null
+  /** 来源角色池原始 ID，null = 直接新建 */
+  sourcePoolCharacterId?: string | null
   name: string
   age?: number
   /** 身份定位：主角/配角/反派/龙套/其他 */

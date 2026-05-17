@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AppButton from '@/components/base/AppButton.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
@@ -10,10 +11,13 @@ import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import ProjectCard from './components/ProjectCard.vue'
 import { initHomeState } from './hooks'
 
+const router = useRouter()
+
 const {
   projects,
   loading,
   drawerOpen,
+  createTrigger,
   createForm,
   createLoading,
   openCreate,
@@ -29,6 +33,12 @@ const {
 
 <template>
   <AppLayout>
+    <template #header-right>
+      <button class="pool-nav-btn" @click="router.push('/character-pool')">
+        <i class="i-lucide-users" />
+        角色池
+      </button>
+    </template>
     <div class="home-page">
       <div class="home-page__header">
         <div>
@@ -79,7 +89,7 @@ const {
     </div>
 
     <!-- 新建项目抽屉 -->
-    <AppDrawer v-model="drawerOpen" title="新建项目">
+    <AppDrawer v-model="drawerOpen" title="新建项目" :clear-handler="openCreate" :open-trigger="createTrigger">
       <div class="form-fields">
         <AppInput
           v-model="createForm.name"
@@ -98,6 +108,19 @@ const {
           label="叙事视角"
           placeholder="如：第一人称、第三人称限知"
         />
+        <div class="form-field">
+          <label class="form-label">项目大类</label>
+          <div class="outline-type-options">
+            <button
+              v-for="t in ['原创主线', '原著续写', '直线番外', '扩写改写']"
+              :key="t"
+              type="button"
+              class="outline-type-btn"
+              :class="{ active: createForm.outlineType === t }"
+              @click="createForm.outlineType = createForm.outlineType === t ? '' : t"
+            >{{ t }}</button>
+          </div>
+        </div>
       </div>
       <template #footer>
         <AppButton variant="secondary" @click="drawerOpen = false">取消</AppButton>
@@ -168,6 +191,66 @@ const {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.outline-type-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.outline-type-btn {
+  padding: 4px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.outline-type-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.outline-type-btn.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.pool-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-right: 8px;
+}
+
+.pool-nav-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 </style>
 

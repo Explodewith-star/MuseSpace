@@ -3,8 +3,8 @@ import AppBadge from '@/components/base/AppBadge.vue'
 import AppButton from '@/components/base/AppButton.vue'
 import AppCheckbox from '@/components/base/AppCheckbox.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
-import AppFilterChip from '@/components/base/AppFilterChip.vue'
 import AppModal from '@/components/base/AppModal.vue'
+import AppSelect from '@/components/base/AppSelect.vue'
 import AppSkeleton from '@/components/base/AppSkeleton.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import { computed, ref } from 'vue'
@@ -66,13 +66,11 @@ const {
 } = initSuggestionsState()
 
 type OutlineDeleteScope = 'single' | 'batch' | 'all'
-type WorkbenchKey = 'pending' | 'assets' | 'consistency' | 'memory' | 'history'
 
 const outlineDeleteModalOpen = ref(false)
 const outlineDeleteScope = ref<OutlineDeleteScope>('single')
 const outlineDeleteTargetId = ref<string>('')
 const outlineDeleteHasChapters = ref(false)
-const activeWorkbench = ref<WorkbenchKey>('pending')
 const expandedGroups = ref<string[]>([])
 
 const assetCategories = ['Character', 'WorldRule', 'StyleProfile', 'Outline']
@@ -85,42 +83,12 @@ const consistencyCategories = [
 ]
 const memoryCategories = ['CanonFact', 'CanonEvent', 'PlotThread', 'ProjectSummary']
 
-const categoryOptions = [
-  { value: '', label: '全部类型' },
-  { value: 'CharacterConsistency', label: '角色冲突' },
-  { value: 'StyleConsistency', label: '文风偏离' },
-  { value: 'WorldRuleConsistency', label: '世界观冲突' },
-  { value: 'CanonFact', label: '剧情事实' },
-  { value: 'CanonEvent', label: '章节事件' },
-  { value: 'PlotThread', label: '伏笔追踪' },
-  { value: 'Character', label: '角色' },
-  { value: 'WorldRule', label: '世界观规则' },
-  { value: 'StyleProfile', label: '文风画像' },
-  { value: 'Outline', label: '大纲规划' },
-]
-
 const checkTypeOptions = [
   { value: 'consistency', label: '世界观一致性检查', icon: 'i-lucide-shield-alert' },
   { value: 'character', label: '角色一致性检查', icon: 'i-lucide-user-check' },
 ] as const
 
-const statusOptions = [
-  { value: '', label: '全部状态' },
-  { value: 'Pending', label: '待处理' },
-  { value: 'Accepted', label: '已接受' },
-  { value: 'Applied', label: '已应用' },
-  { value: 'Ignored', label: '已忽略' },
-]
-
-const scopedSuggestions = computed(() => {
-  return filteredSuggestions.value.filter((s) => {
-    if (activeWorkbench.value === 'pending') return s.status === 'Pending'
-    if (activeWorkbench.value === 'assets') return assetCategories.includes(s.category)
-    if (activeWorkbench.value === 'consistency') return consistencyCategories.includes(s.category)
-    if (activeWorkbench.value === 'memory') return memoryCategories.includes(s.category)
-    return s.status !== 'Pending'
-  })
-})
+const scopedSuggestions = computed(() => filteredSuggestions.value)
 
 const categoryCounts = computed(() => {
   return suggestions.value.reduce<Record<string, number>>((map, s) => {
@@ -136,38 +104,30 @@ const statusCounts = computed(() => {
   }, {})
 })
 
-const workbenchOptions = computed(() => [
-  {
-    key: 'pending' as const,
-    label: '待我处理',
-    icon: 'i-lucide-inbox',
-    count: statusCounts.value.Pending ?? 0,
-  },
-  {
-    key: 'assets' as const,
-    label: '资产入库',
-    icon: 'i-lucide-box',
-    count: suggestions.value.filter((s) => assetCategories.includes(s.category)).length,
-  },
-  {
-    key: 'consistency' as const,
-    label: '一致性审查',
-    icon: 'i-lucide-shield-alert',
-    count: suggestions.value.filter((s) => consistencyCategories.includes(s.category)).length,
-  },
-  {
-    key: 'memory' as const,
-    label: '剧情记忆',
-    icon: 'i-lucide-bookmark',
-    count: suggestions.value.filter((s) => memoryCategories.includes(s.category)).length,
-  },
-  {
-    key: 'history' as const,
-    label: '处理记录',
-    icon: 'i-lucide-archive',
-    count: suggestions.value.filter((s) => s.status !== 'Pending').length,
-  },
+const typeSelectOptions = computed(() => [
+  { value: '', label: `全部类型 (${suggestions.value.length})` },
+  { value: 'CanonFact', label: `剧情事实 (${categoryCounts.value['CanonFact'] ?? 0})` },
+  { value: 'CanonEvent', label: `章节事件 (${categoryCounts.value['CanonEvent'] ?? 0})` },
+  { value: 'PlotThread', label: `伏笔追踪 (${categoryCounts.value['PlotThread'] ?? 0})` },
+  { value: 'CharacterConsistency', label: `角色冲突 (${categoryCounts.value['CharacterConsistency'] ?? 0})` },
+  { value: 'StyleConsistency', label: `文风偏离 (${categoryCounts.value['StyleConsistency'] ?? 0})` },
+  { value: 'WorldRuleConsistency', label: `世界观冲突 (${categoryCounts.value['WorldRuleConsistency'] ?? 0})` },
+  { value: 'Character', label: `角色 (${categoryCounts.value['Character'] ?? 0})` },
+  { value: 'WorldRule', label: `世界观规则 (${categoryCounts.value['WorldRule'] ?? 0})` },
+  { value: 'StyleProfile', label: `文风画像 (${categoryCounts.value['StyleProfile'] ?? 0})` },
+  { value: 'Outline', label: `大纲规划 (${categoryCounts.value['Outline'] ?? 0})` },
 ])
+
+const statusSelectOptions = computed(() => {
+  const acceptedAppliedCount = (statusCounts.value['Accepted'] ?? 0) + (statusCounts.value['Applied'] ?? 0)
+  return [
+    { value: '', label: `全部状态 (${suggestions.value.length})` },
+    { value: 'Pending', label: `待处理 (${statusCounts.value['Pending'] ?? 0})` },
+    { value: 'AcceptedApplied', label: `已接受应用 (${acceptedAppliedCount})` },
+    { value: 'Ignored', label: `已忽略 (${statusCounts.value['Ignored'] ?? 0})` },
+  ]
+})
+
 
 const groupedSuggestions = computed(() => {
   const groups = [
@@ -285,14 +245,6 @@ function getSuggestionSummary(s: AgentSuggestionResponse): string {
   return '打开详情或接受后，可将该 AI 结果并入项目工作流。'
 }
 
-function setCategory(value: string) {
-  filterCategory.value = value
-}
-
-function setStatus(value: string) {
-  filterStatus.value = value as SuggestionStatus | ''
-}
-
 function toggleScopedSelectAll() {
   if (allScopedSelected.value) {
     scopedSuggestions.value.forEach((s) => selectedIds.value.delete(s.id))
@@ -368,48 +320,43 @@ function toggleGroupExpanded(key: string) {
       </div>
     </section>
 
-    <section class="workbench-tabs" aria-label="审核工作台分类">
-      <AppFilterChip
-        v-for="opt in workbenchOptions"
-        :key="opt.key"
-        :active="activeWorkbench === opt.key"
-        :count="opt.count"
-        :icon="opt.icon"
-        @click="activeWorkbench = opt.key"
-      >
-        {{ opt.label }}
-      </AppFilterChip>
-    </section>
-
-    <section class="filter-panel">
-      <div class="filter-panel__row">
-        <span class="filter-panel__label">类型</span>
-        <div class="filter-chips">
-          <AppFilterChip
-            v-for="opt in categoryOptions"
-            :key="opt.value"
-            :active="filterCategory === opt.value"
-            :count="opt.value ? categoryCounts[opt.value] ?? 0 : suggestions.length"
-            @click="setCategory(opt.value)"
-          >
-            {{ opt.label }}
-          </AppFilterChip>
-        </div>
+    <section class="filter-bar">
+      <div class="filter-bar__selects">
+        <AppSelect
+          v-model="filterCategory"
+          :options="typeSelectOptions"
+          :searchable="false"
+          placeholder="全部类型"
+          class="filter-select"
+        />
+        <AppSelect
+          v-model="filterStatus"
+          :options="statusSelectOptions"
+          :searchable="false"
+          placeholder="全部状态"
+          class="filter-select"
+        />
       </div>
-      <div class="filter-panel__row">
-        <span class="filter-panel__label">状态</span>
-        <div class="filter-chips">
-          <AppFilterChip
-            v-for="opt in statusOptions"
-            :key="opt.value"
-            :active="filterStatus === opt.value"
-            :count="opt.value ? statusCounts[opt.value] ?? 0 : suggestions.length"
-            @click="setStatus(opt.value)"
-          >
-            {{ opt.label }}
-          </AppFilterChip>
-        </div>
+      <div class="filter-bar__actions">
+        <button
+          v-if="(statusCounts['Pending'] ?? 0) > 0"
+          :class="['pending-badge', { active: filterStatus === 'Pending' }]"
+          @click="filterStatus = filterStatus === 'Pending' ? '' : 'Pending'"
+        >
+          <i class="i-lucide-inbox" />
+          待处理 {{ statusCounts['Pending'] ?? 0 }}
+        </button>
+        <AppButton
+          v-if="filterCategory || filterStatus"
+          variant="ghost"
+          size="sm"
+          @click="filterCategory = ''; filterStatus = ''"
+        >
+          <i class="i-lucide-x" />
+          清除筛选
+        </AppButton>
       </div>
+      <span class="filter-bar__count">共 {{ scopedSuggestions.length }} 条</span>
     </section>
 
     <div v-if="selectedIds.size > 0" class="batch-bar">
@@ -496,7 +443,7 @@ function toggleGroupExpanded(key: string) {
             >
               <div class="card-top">
                 <div class="card-left">
-                  <AppCheckbox size="sm" :checked="selectedIds.has(s.id)" @change="toggleSelect(s.id)" />
+                  <AppCheckbox :checked="selectedIds.has(s.id)" @change="toggleSelect(s.id)" />
                   <i :class="['card-icon', getCategoryIcon(s.category)]" />
                   <span class="card-title">{{ s.title }}</span>
                 </div>
@@ -608,8 +555,82 @@ function toggleGroupExpanded(key: string) {
 
               <template v-else>
                 <div v-if="memoryCategories.includes(s.category)" class="memory-preview">
-                  <i class="i-lucide-bookmark" />
-                  <span>{{ getSuggestionSummary(s) }}</span>
+                  <!-- CanonFact：新增事实 / 失效条目 -->
+                  <template v-if="s.category === 'CanonFact'">
+                    <div v-if="getContent(s).newFacts?.length" class="card-section">
+                      <span class="section-label">新增 / 更新事实</span>
+                      <div class="memory-fact-list">
+                        <div v-for="(fact, fi) in getContent(s).newFacts.slice(0, 6)" :key="fi" class="memory-fact-row">
+                          <span class="mem-badge mem-badge--new">{{ fact.factType }}</span>
+                          <span class="mem-key">{{ fact.factKey }}</span>
+                          <span class="mem-arrow">→</span>
+                          <span class="mem-val">{{ fact.factValue }}</span>
+                        </div>
+                        <p v-if="getContent(s).newFacts.length > 6" class="mem-more">还有 {{ getContent(s).newFacts.length - 6 }} 条…</p>
+                      </div>
+                    </div>
+                    <div v-if="getContent(s).invalidations?.length" class="card-section">
+                      <span class="section-label">失效标记</span>
+                      <div class="memory-fact-list">
+                        <div v-for="(inv, ii) in getContent(s).invalidations.slice(0, 3)" :key="ii" class="memory-fact-row">
+                          <span class="mem-badge mem-badge--invalid">失效</span>
+                          <span class="mem-key">{{ inv.factKey }}</span>
+                          <span v-if="inv.reason" class="mem-val">— {{ inv.reason }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- CanonEvent：章节事件列表 -->
+                  <template v-else-if="s.category === 'CanonEvent'">
+                    <div v-if="getContent(s).events?.length" class="card-section">
+                      <span class="section-label">抽取的章节事件（{{ getContent(s).events.length }} 条）</span>
+                      <div class="memory-fact-list">
+                        <div v-for="(ev, ei) in getContent(s).events.slice(0, 5)" :key="ei" class="memory-fact-row">
+                          <span class="mem-badge mem-badge--event">{{ ev.eventType ?? 'Custom' }}</span>
+                          <span class="mem-key">{{ ev.eventText }}</span>
+                          <i v-if="ev.isIrreversible" class="i-lucide-lock mem-lock" title="不可逆事件" />
+                        </div>
+                        <p v-if="getContent(s).events.length > 5" class="mem-more">还有 {{ getContent(s).events.length - 5 }} 条…</p>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- PlotThread：新埋伏笔 + 状态更新 -->
+                  <template v-else-if="s.category === 'PlotThread'">
+                    <div v-if="getContent(s).newThreads?.length" class="card-section">
+                      <span class="section-label">新埋伏笔（{{ getContent(s).newThreads.length }} 条）</span>
+                      <div class="memory-fact-list">
+                        <div v-for="(nt, ti) in getContent(s).newThreads.slice(0, 5)" :key="ti" class="memory-fact-row">
+                          <span class="mem-badge mem-badge--new">新埋</span>
+                          <span class="mem-key">{{ nt.title }}</span>
+                          <span v-if="nt.importance" class="mem-badge" :class="nt.importance === 'High' ? 'mem-badge--high' : nt.importance === 'Medium' ? 'mem-badge--medium' : 'mem-badge--low'">
+                            {{ nt.importance }}
+                          </span>
+                          <span v-if="nt.description" class="mem-val">— {{ nt.description }}</span>
+                        </div>
+                        <p v-if="getContent(s).newThreads.length > 5" class="mem-more">还有 {{ getContent(s).newThreads.length - 5 }} 条…</p>
+                      </div>
+                    </div>
+                    <div v-if="getContent(s).updates?.length" class="card-section">
+                      <span class="section-label">状态更新（{{ getContent(s).updates.length }} 条）</span>
+                      <div class="memory-fact-list">
+                        <div v-for="(upd, ui) in getContent(s).updates.slice(0, 3)" :key="ui" class="memory-fact-row">
+                          <span class="mem-badge mem-badge--update">{{ upd.newStatus }}</span>
+                          <span v-if="upd.reason" class="mem-val">{{ upd.reason }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-if="getContent(s).notes" class="card-section">
+                      <span class="section-label">备注</span>
+                      <p class="section-text">{{ getContent(s).notes }}</p>
+                    </div>
+                  </template>
+
+                  <!-- 其他 memory 类型 -->
+                  <template v-else>
+                    <p class="section-text">{{ getSuggestionSummary(s) }}</p>
+                  </template>
                 </div>
 
                 <div v-if="getContent(s).conflictSnippet" class="conflict-snippet">
@@ -860,39 +881,66 @@ function toggleGroupExpanded(key: string) {
   color: var(--color-text-muted);
 }
 
-.workbench-tabs,
-.filter-chips {
+.filter-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.workbench-tabs {
-  margin-bottom: 12px;
-}
-
-.filter-panel {
-  display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 10px;
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-bg-surface);
   margin-bottom: 14px;
+  flex-wrap: wrap;
 }
 
-.filter-panel__row {
-  display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
+.filter-bar__selects {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
-.filter-panel__label {
-  padding-top: 6px;
+.filter-select {
+  width: 160px;
+}
+
+.filter-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-bar__count {
+  margin-left: auto;
   font-size: 12px;
   color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.pending-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-canvas);
+  color: var(--color-text-muted);
+  transition: all 0.15s;
+}
+
+.pending-badge:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+
+.pending-badge.active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
 }
 
 .batch-bar {
@@ -1090,7 +1138,6 @@ function toggleGroupExpanded(key: string) {
   justify-content: flex-end;
 }
 
-.memory-preview,
 .conflict-snippet {
   display: flex;
   gap: 8px;
@@ -1100,11 +1147,100 @@ function toggleGroupExpanded(key: string) {
   margin-bottom: 10px;
   font-size: 13px;
   line-height: 1.6;
+  background: color-mix(in srgb, var(--color-danger) 6%, transparent);
+  border-left: 3px solid var(--color-danger);
+  color: var(--color-text-secondary);
+  font-style: italic;
 }
 
 .memory-preview {
-  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
-  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.memory-fact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.memory-fact-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.mem-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  line-height: 1.6;
+}
+
+.mem-badge--new {
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  color: var(--color-success);
+}
+
+.mem-badge--invalid {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+}
+
+.mem-badge--event {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
+}
+
+.mem-badge--update {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+}
+
+.mem-badge--high {
+  background: rgba(220, 38, 38, 0.12);
+  color: rgb(185, 28, 28);
+}
+
+.mem-badge--medium {
+  background: rgba(245, 158, 11, 0.12);
+  color: rgb(180, 83, 9);
+}
+
+.mem-badge--low {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+}
+
+.mem-key {
+  font-weight: 500;
+  color: var(--color-text-primary);
+  word-break: break-all;
+}
+
+.mem-arrow {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.mem-val {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.mem-lock {
+  color: var(--color-danger);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.mem-more {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 .conflict-snippet {

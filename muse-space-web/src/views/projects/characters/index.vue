@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import type { GenerationMode } from '@/types/models'
 import AppButton from '@/components/base/AppButton.vue'
 import AppEmpty from '@/components/base/AppEmpty.vue'
 import AppBadge from '@/components/base/AppBadge.vue'
@@ -23,6 +24,7 @@ const {
   characters,
   loading,
   drawerOpen,
+  createTrigger,
   createForm,
   createLoading,
   openCreate,
@@ -33,22 +35,73 @@ const {
   cancelDelete,
   confirmDelete,
   editDrawerOpen,
+  editTrigger,
   editForm,
   editLoading,
   openEdit,
+  resetEditForm,
   submitEdit,
   generateDesc,
   generateFromNovel,
   generateLoading,
   generateFromDesc,
-  poolCharacters,
-  poolLoading,
-  showPoolPanel,
-  selectedPoolIds,
-  importLoading,
-  togglePoolSelect,
-  importSelectedToOutline,
+  syncToPool,
+  goToPool,
+  modeCharCounts,
 } = initCharactersState()
+
+// ── Mode Tab ───────────────────────────────────────────────
+const ALL_MODES: GenerationMode[] = [
+  'Original',
+  'ContinueFromOriginal',
+  'SideStoryFromOriginal',
+  'ExpandOrRewrite',
+]
+
+const MODE_LABELS: Record<GenerationMode, string> = {
+  Original: '原创主线',
+  ContinueFromOriginal: '原著续写',
+  SideStoryFromOriginal: '支线番外',
+  ExpandOrRewrite: '扩写/改写',
+}
+
+const MODE_ICONS: Record<GenerationMode, string> = {
+  Original: 'i-lucide-pen-line',
+  ContinueFromOriginal: 'i-lucide-book-copy',
+  SideStoryFromOriginal: 'i-lucide-git-branch',
+  ExpandOrRewrite: 'i-lucide-text-cursor-input',
+}
+
+const selectedMode = ref<GenerationMode>('Original')
+
+// modeOutlineCounts 已由 hooks 提供 modeCharCounts（角色数），此处不再重复计算
+
+const modeOutlines = computed(() =>
+  outlines.value
+    .filter((o) => o.mode === selectedMode.value)
+    .sort((a, b) => (a.chainIndex || 0) - (b.chainIndex || 0) || a.createdAt.localeCompare(b.createdAt)),
+)
+
+function selectMode(mode: GenerationMode) {
+  selectedMode.value = mode
+  const first = modeOutlines.value[0]
+  if (first) {
+    switchOutline(first.id)
+  } else {
+    switchOutline('')
+  }
+}
+
+// 大纲加载后，将 selectedMode 同步为当前选中大纲的模式
+watch(
+  outlines,
+  (newOutlines) => {
+    if (!newOutlines.length) return
+    const current = newOutlines.find((o) => o.id === currentOutlineId.value)
+    if (current) selectedMode.value = current.mode
+  },
+  { immediate: false },
+)
 
 // ── 搜索 & 视图切换 ──
 const searchQuery = ref('')
@@ -109,6 +162,10 @@ function toggleExpand(id: string) {
             <i class="i-lucide-list" />
           </button>
         </div>
+        <AppButton variant="secondary" @click="goToPool">
+          <i class="i-lucide-users" />
+          角色池
+        </AppButton>
         <AppButton @click="openCreate">
           <i class="i-lucide-plus" />
           添加角色
@@ -116,65 +173,41 @@ function toggleExpand(id: string) {
       </div>
     </div>
 
-    <!-- 大纲选择器 -->
-    <div v-if="outlines.length > 0" class="outline-tabs">
+    <!-- 引导文案 -->
+    <p class="page__guide">点击 <strong>添加角色</strong> 手动创建，或点击 <strong>角色池</strong> 将已有角色引用到当前大纲。</p>
+
+    <!-- Mode Tabs（4 分类，始终显示） -->
+    <div class="mode-tabs">
       <button
-        v-for="outline in outlines"
-        :key="outline.id"
-        :class="['outline-tab', { active: currentOutlineId === outline.id }]"
-        @click="switchOutline(outline.id)"
+        v-for="mode in ALL_MODES"
+        :key="mode"
+        type="button"
+        :class="['mode-tab', { 'mode-tab--active': selectedMode === mode }]"
+        @click="selectMode(mode)"
       >
-        {{ outline.name }}
-      </button>
-      <!-- 原著角色池入口（有池数据时显示） -->
-      <button
-        v-if="poolCharacters.length > 0"
-        :class="['outline-tab', 'pool-tab', { active: showPoolPanel }]"
-        @click="showPoolPanel = !showPoolPanel"
-      >
-        <i class="i-lucide-library" />
-        原著角色池
-        <span class="pool-count">{{ poolCharacters.length }}</span>
+        <i :class="MODE_ICONS[mode]" />
+        <span class="mode-tab__label">{{ MODE_LABELS[mode] }}</span>
+        <span v-if="modeCharCounts[mode]" class="mode-tab__count">{{ modeCharCounts[mode] }}</span>
       </button>
     </div>
 
-    <!-- 原著角色池面板 -->
-    <div v-if="showPoolPanel" class="pool-panel">
-      <div class="pool-panel-header">
-        <h3 class="pool-panel-title">
-          <i class="i-lucide-library" />
-          原著角色池
-        </h3>
-        <p class="pool-panel-desc">以下角色来自原著导入，选择后可引入到当前大纲（独立副本，互不影响）。</p>
-        <AppButton
-          v-if="selectedPoolIds.size > 0"
-          :loading="importLoading"
-          @click="importSelectedToOutline"
-        >
-          <i class="i-lucide-download" />
-          引入选中 ({{ selectedPoolIds.size }})
-        </AppButton>
+    <!-- 大纲子导航（当前分类下的大纲） -->
+    <div class="outline-sub-nav">
+      <div class="outline-sub-tabs">
+        <template v-if="modeOutlines.length > 0">
+          <button
+            v-for="outline in modeOutlines"
+            :key="outline.id"
+            type="button"
+            :class="['outline-sub-tab', { active: currentOutlineId === outline.id }]"
+            @click="switchOutline(outline.id)"
+          >
+            {{ outline.name }}
+          </button>
+        </template>
+        <span v-else class="outline-sub-empty">该分类暂无大纲</span>
       </div>
-      <div v-if="poolLoading" class="pool-loading">
-        <AppSkeleton v-for="i in 3" :key="i" height="80px" class="mb-2" />
-      </div>
-      <div v-else class="pool-cards">
-        <div
-          v-for="c in poolCharacters"
-          :key="c.id"
-          :class="['pool-card', { selected: selectedPoolIds.has(c.id) }]"
-          @click="togglePoolSelect(c.id)"
-        >
-          <div class="pool-card-check">
-            <i :class="selectedPoolIds.has(c.id) ? 'i-lucide-check-circle-2' : 'i-lucide-circle'" />
-          </div>
-          <div class="pool-card-body">
-            <div class="pool-card-name">{{ c.name }}</div>
-            <div v-if="c.role" class="pool-card-role">{{ c.role }}</div>
-            <div v-if="c.personalitySummary" class="pool-card-summary">{{ c.personalitySummary }}</div>
-          </div>
-        </div>
-      </div>
+      <!-- 原著角色池入口已移至顶部「角色池」按钮 -->
     </div>
 
     <!-- 角色生成 Agent -->
@@ -273,7 +306,12 @@ function toggleExpand(id: string) {
             <div v-for="char in originalChars" :key="char.id" class="char-card">
               <div class="char-card__header">
                 <div>
-                  <h3 class="char-name">{{ char.name }}</h3>
+                  <h3 class="char-name">
+                    {{ char.name }}
+                    <span v-if="char.sourcePoolCharacterId" class="pool-source-badge" title="来自角色池">
+                      <i class="i-lucide-link-2" />池
+                    </span>
+                  </h3>
                   <p v-if="char.role" class="char-role">{{ char.role }}</p>
                 </div>
                 <div class="char-card__actions">
@@ -427,7 +465,7 @@ function toggleExpand(id: string) {
     </template>
 
     <!-- 添加角色抽屉 -->
-    <AppDrawer v-model="drawerOpen" title="添加角色" width="520px">
+    <AppDrawer v-model="drawerOpen" title="添加角色" width="520px" :clear-handler="openCreate" :open-trigger="createTrigger">
       <div class="form-fields">
         <!-- AI 角色生成（合并：从原著提取 + 自由生成） -->
         <div class="ai-generate-block">
@@ -544,6 +582,10 @@ function toggleExpand(id: string) {
         />
       </div>
       <template #footer>
+        <label class="sync-pool-check">
+          <input v-model="syncToPool" type="checkbox" />
+          同步到角色池留档
+        </label>
         <AppButton variant="secondary" @click="drawerOpen = false">取消</AppButton>
         <AppButton
           :loading="createLoading"
@@ -556,7 +598,7 @@ function toggleExpand(id: string) {
     </AppDrawer>
 
     <!-- 编辑角色抽屉 -->
-    <AppDrawer v-model="editDrawerOpen" title="编辑角色" width="520px">
+    <AppDrawer v-model="editDrawerOpen" title="编辑角色" width="520px" :clear-handler="resetEditForm" :open-trigger="editTrigger">
       <div class="form-fields">
         <div class="form-section-title">基本信息</div>
         <AppInput v-model="editForm.name" label="角色名称 *" placeholder="角色姓名" />
@@ -796,6 +838,36 @@ function toggleExpand(id: string) {
   font-weight: 600;
   color: var(--color-text-primary);
   margin: 0 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pool-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(108, 92, 231, 0.1);
+  color: var(--color-primary);
+  vertical-align: middle;
+}
+
+.sync-pool-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  margin-right: auto;
+}
+
+.sync-pool-check input {
+  accent-color: var(--color-primary);
 }
 
 .char-role {
@@ -1020,6 +1092,133 @@ function toggleExpand(id: string) {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* ── 引导文案 ── */
+.page__guide {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: -12px 0 16px;
+  line-height: 1.6;
+}
+
+.page__guide strong {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* ── Mode Tabs ── */
+.mode-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--color-bg-elevated, var(--color-bg-muted, #f0f0f5));
+  border-radius: 12px;
+  margin-bottom: 10px;
+}
+
+.mode-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  justify-content: center;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.mode-tab:hover {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-bg-surface) 60%, transparent);
+}
+
+.mode-tab--active {
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.mode-tab i {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.mode-tab__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mode-tab--active .mode-tab__count {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* ── Outline Sub-Nav ── */
+.outline-sub-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  min-height: 36px;
+}
+
+.outline-sub-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  align-items: center;
+}
+
+.outline-sub-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.outline-sub-tab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-muted, #f5f5f5);
+}
+
+.outline-sub-tab.active {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.outline-sub-empty {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  padding: 0 4px;
 }
 
 /* Outline tabs */

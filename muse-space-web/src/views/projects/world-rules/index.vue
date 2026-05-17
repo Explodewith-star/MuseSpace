@@ -19,6 +19,7 @@ const {
   rules,
   loading,
   drawerOpen,
+  createTrigger,
   createForm,
   createLoading,
   openCreate,
@@ -29,9 +30,11 @@ const {
   cancelDelete,
   confirmDelete,
   editDrawerOpen,
+  editTrigger,
   editForm,
   editLoading,
   openEdit,
+  resetEditForm,
   submitEdit,
 } = initWorldRulesState()
 
@@ -124,7 +127,7 @@ function priorityVariant(p: number): 'danger' | 'accent' | 'muted' {
     </div>
 
     <!-- 添加规则抽屉 -->
-    <AppDrawer v-model="drawerOpen" title="添加世界观规则">
+    <AppDrawer v-model="drawerOpen" title="添加世界观规则" :clear-handler="openCreate" :open-trigger="createTrigger">
       <div class="form-fields">
         <AppInput v-model="createForm.title" label="规则标题 *" placeholder="如：魔法禁止用于战争" />
         <AppTextarea
@@ -175,7 +178,7 @@ function priorityVariant(p: number): 'danger' | 'accent' | 'muted' {
     </AppDrawer>
 
     <!-- 编辑规则抽屉 -->
-    <AppDrawer v-model="editDrawerOpen" title="编辑世界观规则">
+    <AppDrawer v-model="editDrawerOpen" title="编辑世界观规则" :clear-handler="resetEditForm" :open-trigger="editTrigger">
       <div class="form-fields">
         <AppInput v-model="editForm.title" label="规则标题 *" placeholder="如：魔法禁止用于战争" />
         <AppTextarea

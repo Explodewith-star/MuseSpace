@@ -8,6 +8,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppCard from '@/components/base/AppCard.vue'
 import AppButton from '@/components/base/AppButton.vue'
+import AppCheckbox from '@/components/base/AppCheckbox.vue'
 import AppInput from '@/components/base/AppInput.vue'
 import AppTextarea from '@/components/base/AppTextarea.vue'
 import AppModal from '@/components/base/AppModal.vue'
@@ -33,6 +34,8 @@ const toast = useToast()
 const threads = ref<PlotThreadResponse[]>([])
 const loading = ref(false)
 const maxChapterNumber = ref(0)
+const selectedIds = ref(new Set<string>())
+const batchDeleting = ref(false)
 
 // ── 视图切换 & 搜索 ──
 const viewMode = ref<'kanban' | 'table'>('kanban')
@@ -157,6 +160,41 @@ async function removeOne(t: PlotThreadResponse) {
   await deletePlotThread(projectId.value, t.id)
   refresh()
 }
+
+const allSelected = computed(
+  () =>
+    filteredThreads.value.length > 0 &&
+    filteredThreads.value.every((t) => selectedIds.value.has(t.id)),
+)
+
+function toggleSelect(id: string) {
+  if (selectedIds.value.has(id)) {
+    selectedIds.value.delete(id)
+  } else {
+    selectedIds.value.add(id)
+  }
+}
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    filteredThreads.value.forEach((t) => selectedIds.value.delete(t.id))
+  } else {
+    filteredThreads.value.forEach((t) => selectedIds.value.add(t.id))
+  }
+}
+
+async function batchDelete() {
+  if (!confirm(`确定删除选中的 ${selectedIds.value.size} 条线索？`)) return
+  batchDeleting.value = true
+  try {
+    await Promise.all([...selectedIds.value].map((id) => deletePlotThread(projectId.value, id)))
+    selectedIds.value.clear()
+    toast.success('批量删除成功')
+    refresh()
+  } finally {
+    batchDeleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -219,6 +257,23 @@ async function removeOne(t: PlotThreadResponse) {
       </div>
     </div>
 
+    <div v-if="selectedIds.size > 0" class="batch-bar">
+      <span class="batch-info">已选 {{ selectedIds.size }} 条</span>
+      <template v-if="batchDeleting">
+        <span class="batch-processing">
+          <i class="i-lucide-loader-circle batch-spinner" />
+          删除中，请稍候…
+        </span>
+      </template>
+      <template v-else>
+        <AppButton size="sm" variant="ghost" :disabled="batchDeleting" @click="batchDelete">
+          <i class="i-lucide-trash-2" />
+          批量删除
+        </AppButton>
+        <AppButton size="sm" variant="ghost" @click="selectedIds.clear()">取消选择</AppButton>
+      </template>
+    </div>
+
     <!-- ═══ 看板视图 ═══ -->
     <div v-if="viewMode === 'kanban'" class="kanban">
       <div v-for="col in STATUS_COLUMNS" :key="col.key" class="kanban-col">
@@ -234,9 +289,10 @@ async function removeOne(t: PlotThreadResponse) {
             v-for="t in listByStatus(col.key)"
             :key="t.id"
             class="thread-card"
-            :class="{ 'thread-card--stale': isStale(t) }"
+            :class="{ 'thread-card--stale': isStale(t), 'thread-card--selected': selectedIds.has(t.id) }"
           >
             <div class="card-head">
+              <AppCheckbox :checked="selectedIds.has(t.id)" @change="toggleSelect(t.id)" />
               <span class="card-title">{{ t.title }}</span>
               <span v-if="t.importance" class="card-importance" :class="`imp-${t.importance.toLowerCase()}`">
                 {{ t.importance }}
@@ -280,6 +336,9 @@ async function removeOne(t: PlotThreadResponse) {
       <table v-else class="thread-table">
         <thead>
           <tr>
+            <th class="col-check">
+              <AppCheckbox :checked="allSelected" @change="toggleSelectAll" />
+            </th>
             <th>标题</th>
             <th>描述</th>
             <th>重要度</th>
@@ -294,8 +353,11 @@ async function removeOne(t: PlotThreadResponse) {
           <tr
             v-for="t in filteredThreads"
             :key="t.id"
-            :class="{ 'row-stale': isStale(t) }"
+            :class="{ 'row-stale': isStale(t), 'row-selected': selectedIds.has(t.id) }"
           >
+            <td class="col-check" @click.stop>
+              <AppCheckbox :checked="selectedIds.has(t.id)" @change="toggleSelect(t.id)" />
+            </td>
             <td class="cell-title">{{ t.title }}</td>
             <td class="cell-desc">{{ t.description ?? '—' }}</td>
             <td>
@@ -715,5 +777,52 @@ async function removeOne(t: PlotThreadResponse) {
 
 .row-stale {
   background: #fffbeb;
+}
+
+.row-selected {
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+.col-check {
+  width: 32px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  border-radius: 8px;
+}
+
+.batch-info {
+  font-size: 13px;
+  color: var(--color-primary);
+  margin-right: 4px;
+}
+
+.batch-processing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.batch-spinner {
+  animation: spin 1s linear infinite;
+}
+
+.thread-card--selected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
 }
 </style>

@@ -14,6 +14,8 @@ public class Character
 
     /// <summary>从哪部原著提取，null 表示原创手动添加。</summary>
     public Guid? SourceNovelId { get; set; }
+    /// <summary>来源角色池原始 ID（从池引入大纲时写入）。null = 直接在大纲/池中新建。</summary>
+    public Guid? SourcePoolCharacterId { get; set; }
     public string Name { get; set; } = string.Empty;
     public int? Age { get; set; }
 

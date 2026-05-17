@@ -127,7 +127,11 @@ const worldRuleCount = ref(0)
 
 async function loadContextStats() {
   try {
-    const [chars, rules] = await Promise.all([getCharacters(projectId), getWorldRules(projectId)])
+    const outlineId = selectedOutlineId.value
+    const [chars, rules] = await Promise.all([
+      outlineId ? getCharacters(projectId, outlineId) : Promise.resolve([]),
+      getWorldRules(projectId),
+    ])
     characterCount.value = chars.length
     worldRuleCount.value = rules.length
   } catch { /* */ }
@@ -160,8 +164,8 @@ async function submitPlan() {
 // ── 章节状态 ──────────────────────────────────────────
 const STATUS_LABELS: Record<number, string> = { 0: '计划中', 1: '草稿中', 2: '修改中', 3: '已定稿' }
 const STATUS_VARIANTS: Record<number, string> = { 0: 'muted', 1: 'accent', 2: 'primary', 3: 'success' }
-const SUGGESTION_STATUS_LABELS: Record<string, string> = { Pending: '待处理', Accepted: '已接受', Applied: '已应用', Ignored: '已忽略' }
-const SUGGESTION_STATUS_VARIANTS: Record<string, string> = { Pending: 'accent', Accepted: 'primary', Applied: 'success', Ignored: 'muted' }
+const SUGGESTION_STATUS_LABELS: Record<string, string> = { Pending: '待处理', Accepted: '已接受应用', Applied: '已接受应用', Ignored: '已忽略' }
+const SUGGESTION_STATUS_VARIANTS: Record<string, string> = { Pending: 'accent', Accepted: 'success', Applied: 'success', Ignored: 'muted' }
 
 function goOutlineDetail(s: AgentSuggestionResponse) {
   router.push(`/projects/${projectId}/suggestions/outline/${s.id}`)

@@ -71,4 +71,23 @@ public sealed class JsonCharacterRepository : JsonRepositoryBase, ICharacterRepo
         }
         await WriteFileAsync(FilePath(projectId), all, cancellationToken);
     }
+
+    public async Task<List<Character>> GetGlobalPoolAsync(IEnumerable<Guid> projectIds, CancellationToken cancellationToken = default)
+    {
+        var all = new List<Character>();
+        foreach (var projectId in projectIds)
+        {
+            var chars = await GetByProjectAsync(projectId, cancellationToken);
+            all.AddRange(chars.Where(c => c.StoryOutlineId == null));
+        }
+        return all;
+    }
+
+    public async Task DeleteManyAsync(Guid projectId, IEnumerable<Guid> characterIds, CancellationToken cancellationToken = default)
+    {
+        var ids = characterIds.ToHashSet();
+        var all = await GetByProjectAsync(projectId, cancellationToken);
+        all.RemoveAll(c => ids.Contains(c.Id));
+        await WriteFileAsync(FilePath(projectId), all, cancellationToken);
+    }
 }

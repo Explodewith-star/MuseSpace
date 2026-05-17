@@ -19,6 +19,7 @@ export function initHomeState() {
     description: '',
     genre: '',
     narrativePerspective: '',
+    outlineType: '',
   })
 
   const deleteTarget = ref<StoryProjectResponse | null>(null)
@@ -35,9 +36,14 @@ export function initHomeState() {
     }
   }
 
+  const createTrigger = ref(0)
+
   function openCreate(): void {
-    Object.assign(createForm, { name: '', description: '', genre: '', narrativePerspective: '' })
+    if (!drawerOpen.value) {
+      Object.assign(createForm, { name: '', description: '', genre: '', narrativePerspective: '', outlineType: '' })
+    }
     drawerOpen.value = true
+    createTrigger.value++
   }
 
   async function submitCreate(): Promise<void> {
@@ -49,6 +55,7 @@ export function initHomeState() {
         description: createForm.description || undefined,
         genre: createForm.genre || undefined,
         narrativePerspective: createForm.narrativePerspective || undefined,
+        outlineType: createForm.outlineType || undefined,
       })
       projects.value.unshift(project)
       drawerOpen.value = false
@@ -93,6 +100,7 @@ export function initHomeState() {
     projects,
     loading,
     drawerOpen,
+    createTrigger,
     createForm,
     createLoading,
     openCreate,

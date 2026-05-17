@@ -39,9 +39,14 @@ export function initWorldRulesState() {
     }
   }
 
+  const createTrigger = ref(0)
+
   function openCreate(): void {
-    Object.assign(createForm, emptyForm())
+    if (!drawerOpen.value) {
+      Object.assign(createForm, emptyForm())
+    }
     drawerOpen.value = true
+    createTrigger.value++
   }
 
   async function submitCreate(): Promise<void> {
@@ -86,6 +91,7 @@ export function initWorldRulesState() {
     rules,
     loading,
     drawerOpen,
+    createTrigger,
     createForm,
     createLoading,
     openCreate,
@@ -113,18 +119,27 @@ function useEditRule(
     priority: 5,
     isHardConstraint: false,
   })
+  const editTrigger = ref(0)
   const editLoading = ref(false)
 
   function openEdit(r: WorldRuleResponse): void {
+    const isRestoring = editDrawerOpen.value && editTarget.value?.id === r.id
     editTarget.value = r
-    Object.assign(editForm, {
-      title: r.title,
-      description: r.description ?? '',
-      category: r.category ?? '',
-      priority: r.priority,
-      isHardConstraint: r.isHardConstraint,
-    })
+    if (!isRestoring) {
+      Object.assign(editForm, {
+        title: r.title,
+        description: r.description ?? '',
+        category: r.category ?? '',
+        priority: r.priority,
+        isHardConstraint: r.isHardConstraint,
+      })
+    }
     editDrawerOpen.value = true
+    editTrigger.value++
+  }
+
+  function resetEditForm(): void {
+    if (editTarget.value) openEdit(editTarget.value)
   }
 
   async function submitEdit(): Promise<void> {
@@ -149,5 +164,5 @@ function useEditRule(
     }
   }
 
-  return { editDrawerOpen, editForm, editLoading, openEdit, submitEdit }
+  return { editDrawerOpen, editForm, editLoading, editTrigger, openEdit, resetEditForm, submitEdit }
 }

@@ -25,6 +25,11 @@ public sealed class EfCharacterRepository : ICharacterRepository
                     .Where(c => c.StoryProjectId == projectId && c.StoryOutlineId == null)
                     .ToListAsync(cancellationToken);
 
+    public async Task<List<Character>> GetGlobalPoolAsync(IEnumerable<Guid> projectIds, CancellationToken cancellationToken = default)
+        => await _db.Characters
+                    .Where(c => projectIds.Contains(c.StoryProjectId) && c.StoryOutlineId == null)
+                    .ToListAsync(cancellationToken);
+
     public async Task<Character?> GetByIdAsync(Guid projectId, Guid characterId, CancellationToken cancellationToken = default)
         => await _db.Characters
                     .FirstOrDefaultAsync(c => c.Id == characterId && c.StoryProjectId == projectId, cancellationToken);
@@ -53,4 +58,12 @@ public sealed class EfCharacterRepository : ICharacterRepository
         => await _db.Characters
                     .Where(c => c.Id == characterId && c.StoryProjectId == projectId)
                     .ExecuteDeleteAsync(cancellationToken);
+
+    public async Task DeleteManyAsync(Guid projectId, IEnumerable<Guid> characterIds, CancellationToken cancellationToken = default)
+    {
+        var ids = characterIds.ToList();
+        await _db.Characters
+                 .Where(c => c.StoryProjectId == projectId && ids.Contains(c.Id))
+                 .ExecuteDeleteAsync(cancellationToken);
+    }
 }

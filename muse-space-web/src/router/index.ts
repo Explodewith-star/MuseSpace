@@ -16,6 +16,11 @@ const routes: RouteRecordRaw[] = [
   },
   ...projectRoutes,
   {
+    path: '/character-pool',
+    name: 'CharacterPool',
+    component: () => import('@/views/character-pool/index.vue'),
+  },
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('@/views/admin/UsersView.vue'),

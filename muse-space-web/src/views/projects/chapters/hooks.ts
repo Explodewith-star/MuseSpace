@@ -39,9 +39,14 @@ export function initChaptersState(options?: { getSelectedOutlineId?: () => strin
     }
   }
 
+  const createTrigger = ref(0)
+
   function openCreate(): void {
-    Object.assign(createForm, { number: '', title: '', summary: '', goal: '' })
+    if (!drawerOpen.value) {
+      Object.assign(createForm, { number: '', title: '', summary: '', goal: '' })
+    }
     drawerOpen.value = true
+    createTrigger.value++
   }
 
   async function submitCreate(): Promise<void> {
@@ -117,6 +122,7 @@ export function initChaptersState(options?: { getSelectedOutlineId?: () => strin
     loading,
     loadChapters,
     drawerOpen,
+    createTrigger,
     createForm,
     createLoading,
     openCreate,

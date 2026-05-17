@@ -59,3 +59,28 @@ export function importFromPool(
 ): Promise<CharacterResponse[]> {
   return request.post(`/projects/${projectId}/character-pool/import-to-outline/${outlineId}`, { characterIds })
 }
+
+/** 在项目角色池中直接新建角色 */
+export function createInPool(projectId: string, data: CreateCharacterRequest): Promise<CharacterResponse> {
+  return request.post(`/projects/${projectId}/character-pool`, data)
+}
+
+/** 批量删除项目角色池中的角色 */
+export function deleteFromPool(projectId: string, characterIds: string[]): Promise<void> {
+  return request.delete(`/projects/${projectId}/character-pool`, { data: { characterIds } })
+}
+
+// ── 全局角色池 ──────────────────────────────────────────────────────────────
+
+/** 获取全局角色池（当前用户所有项目的池角色） */
+export function getGlobalCharacterPool(): Promise<CharacterResponse[]> {
+  return request.get('/character-pool')
+}
+
+/** 将全局池中的角色批量复制到指定项目的池 */
+export function copyPoolCharactersToProject(
+  targetProjectId: string,
+  characterIds: string[],
+): Promise<CharacterResponse[]> {
+  return request.post(`/projects/${targetProjectId}/character-pool/copy-from-global`, { characterIds })
+}

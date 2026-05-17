@@ -40,8 +40,8 @@ export const CATEGORY_ICONS: Record<string, string> = {
 
 export const STATUS_LABELS: Record<SuggestionStatus, string> = {
   Pending: '待处理',
-  Accepted: '已接受',
-  Applied: '已应用',
+  Accepted: '已接受应用',
+  Applied: '已接受应用',
   Ignored: '已忽略',
 }
 
@@ -50,7 +50,7 @@ export const STATUS_VARIANTS: Record<
   'default' | 'primary' | 'accent' | 'success' | 'danger' | 'muted'
 > = {
   Pending: 'accent',
-  Accepted: 'primary',
+  Accepted: 'success',
   Applied: 'success',
   Ignored: 'muted',
 }

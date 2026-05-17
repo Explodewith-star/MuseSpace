@@ -3,4 +3,5 @@ export interface CreateProjectForm {
   description: string
   genre: string
   narrativePerspective: string
+  outlineType: string
 }
